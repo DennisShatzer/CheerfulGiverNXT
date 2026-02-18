@@ -57,8 +57,7 @@ namespace CheerfulGiverNXT
         var line3 = BuildCityStateZip(city, state, zip);
 
         // Only include non-empty lines.
-        return string.Join("
-", new[] { line1, street, line3 }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return string.Join("", new[] { line1, street, line3 }.Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 }
 

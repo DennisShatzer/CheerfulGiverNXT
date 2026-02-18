@@ -47,7 +47,7 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Pledge amount:" VerticalAlignment="Center" Margin="0,0,8,6"/>
-            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding AmountText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,6"/>
+            <TextBox x:Name="AmountTextBox" Text="{Binding AmountText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,8"/>
 
             <TextBlock Grid.Row="0" Grid.Column="2" Text="Pledge date:" VerticalAlignment="Center" Margin="0,0,8,6"/>
             <DatePicker Grid.Row="0" Grid.Column="3" SelectedDate="{Binding PledgeDate}" Margin="0,0,0,6"/>
