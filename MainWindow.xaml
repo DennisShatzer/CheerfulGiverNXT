@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="NXT Constituent Lookup Test" Height="720" Width="1100"
+        Title="CheerfulGiverNXT Constituent Lookup" Height="720" Width="1100"
         WindowStartupLocation="CenterScreen">
 
     <Grid Margin="12">
@@ -17,28 +17,29 @@
 
         <!-- Search row -->
         <DockPanel Grid.Row="0" LastChildFill="True">
-            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBox Width="420"
-                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     VerticalAlignment="Center"
-                     Margin="0,0,8,0"
-                     ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
-                     KeyDown="SearchBox_KeyDown"/>
-            <Button Content="Search"
-                    Width="110"
-                    Margin="0,0,8,0"
-                    Command="{Binding SearchCommand}"
-                    IsEnabled="{Binding IsNotBusy}"/>
-            <Button Content="Authorize this PC"
+            <!-- Right-anchored -->
+            <Button DockPanel.Dock="Right"
+                    Content="Authorize"
                     Width="140"
-                    Margin="0,0,8,0"
+                    Margin="8,0,0,0"
                     Command="{Binding LoginCommand}"
                     IsEnabled="{Binding IsNotBusy}"/>
 
-            <Button Content="Copy Selected ID"
-                    Width="150"
-                    Command="{Binding CopySelectedIdCommand}"
-                    IsEnabled="{Binding HasSelection}"/>
+            <!-- Left group -->
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox Width="420"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalAlignment="Center"
+                         Margin="0,0,8,0"
+                         ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
+                         KeyDown="SearchBox_KeyDown"/>
+                <Button Content="Search"
+                        Width="110"
+                        Margin="0,0,8,0"
+                        Command="{Binding SearchCommand}"
+                        IsEnabled="{Binding IsNotBusy}"/>
+            </StackPanel>
         </DockPanel>
 
         <!-- Auth debug (read-only) -->
@@ -81,16 +82,16 @@
 
         <!-- Results grid -->
         <DataGrid Grid.Row="2"
-          ItemsSource="{Binding Results}"
-          SelectedItem="{Binding SelectedRow}"
-          AutoGenerateColumns="False"
-          CanUserAddRows="False"
-          IsReadOnly="True"
-          SelectionMode="Single"
-          SelectionUnit="FullRow"
-          MouseDoubleClick="ResultsGrid_MouseDoubleClick"
-          EnableRowVirtualization="True"
-          EnableColumnVirtualization="True">
+                  ItemsSource="{Binding Results}"
+                  SelectedItem="{Binding SelectedRow}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow"
+                  MouseDoubleClick="ResultsGrid_MouseDoubleClick"
+                  EnableRowVirtualization="True"
+                  EnableColumnVirtualization="True">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="120"/>
                 <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="220"/>
@@ -107,6 +108,15 @@
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>
+
+            <!-- Token refresh countdown (right side) -->
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock x:Name="TokenCountdownTextBlock"
+                           Foreground="Gray"
+                           Margin="0,0,10,0"
+                           TextAlignment="Right"/>
+            </StatusBarItem>
+
             <StatusBarItem HorizontalAlignment="Right">
                 <ProgressBar Width="160" Height="14" IsIndeterminate="True"
                              Visibility="{Binding BusyVisibility}"/>
