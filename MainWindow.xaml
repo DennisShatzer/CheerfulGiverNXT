@@ -1,0 +1,107 @@
+﻿<Window x:Class="CheerfulGiverNXT.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="NXT Constituent Lookup Test" Height="720" Width="1100"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Search row -->
+        <DockPanel Grid.Row="0" LastChildFill="True">
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox Width="420"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     VerticalAlignment="Center"
+                     Margin="0,0,8,0"
+                     ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
+                     KeyDown="SearchBox_KeyDown"/>
+            <Button Content="Search"
+                    Width="110"
+                    Margin="0,0,8,0"
+                    Command="{Binding SearchCommand}"
+                    IsEnabled="{Binding IsNotBusy}"/>
+            <Button Content="Login"
+                    Width="110"
+                    Margin="0,0,8,0"
+                    Command="{Binding LoginCommand}"
+                    IsEnabled="{Binding IsNotBusy}"/>
+
+            <Button Content="Copy Selected ID"
+                    Width="150"
+                    Command="{Binding CopySelectedIdCommand}"
+                    IsEnabled="{Binding HasSelection}"/>
+        </DockPanel>
+
+        <!-- Credentials (for testing) -->
+        <Expander Grid.Row="1" Header="Credentials (for testing)" IsExpanded="False" Margin="0,10,0,10">
+            <Grid Margin="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Access Token:" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                <TextBox Grid.Row="0" Grid.Column="1"
+                         Text="{Binding AccessToken, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,0,6"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Subscription Key:" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                <TextBox Grid.Row="1" Grid.Column="1"
+                         Text="{Binding SubscriptionKey, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,0,6"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="1" Foreground="Gray"
+                           Text="Tip: You can also set env vars BB_ACCESS_TOKEN and BB_SUBSCRIPTION_KEY."
+                           TextWrapping="Wrap"/>
+            </Grid>
+        </Expander>
+
+        <!-- Results grid -->
+        <DataGrid Grid.Row="2"
+          ItemsSource="{Binding Results}"
+          SelectedItem="{Binding SelectedRow}"
+          AutoGenerateColumns="False"
+          CanUserAddRows="False"
+          IsReadOnly="True"
+          SelectionMode="Single"
+          SelectionUnit="FullRow"
+          MouseDoubleClick="ResultsGrid_MouseDoubleClick"
+          EnableRowVirtualization="True"
+          EnableColumnVirtualization="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="120"/>
+                <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="220"/>
+                <DataGridTextColumn Header="Spouse" Binding="{Binding Spouse}" Width="180"/>
+                <DataGridTextColumn Header="Street address" Binding="{Binding Street}" Width="260"/>
+                <DataGridTextColumn Header="City" Binding="{Binding City}" Width="160"/>
+                <DataGridTextColumn Header="State" Binding="{Binding State}" Width="80"/>
+                <DataGridTextColumn Header="ZIP" Binding="{Binding Zip}" Width="90"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Status bar -->
+        <StatusBar Grid.Row="3" Margin="0,10,0,0">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <ProgressBar Width="160" Height="14" IsIndeterminate="True"
+                             Visibility="{Binding BusyVisibility}"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
