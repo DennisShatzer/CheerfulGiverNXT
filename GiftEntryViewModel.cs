@@ -26,7 +26,7 @@ namespace CheerfulGiverNXT
         {
             // “One-time donation” UX: still uses Monthly in API (frequency value is required),
             // but forces number_of_installments = 1 and start_date = pledge_date.
-            new("One-time (single installment)", PledgeFrequency.Monthly, 1,  true,  true),
+            new("One-time",                      PledgeFrequency.Monthly, 1,  true,  true),
             new("Monthly",                       PledgeFrequency.Monthly, 12, false, false),
             new("Quarterly",                     PledgeFrequency.Quarterly, 4,  false, false),
             new("Annually",                      PledgeFrequency.Annually, 1,  false, false),
@@ -43,25 +43,30 @@ namespace CheerfulGiverNXT
         public string FullName => _row.FullName;
 
         public string ConstituentSummary
-{
-    get
-    {
-        var line1 = $"ID: {_row.Id}   Spouse: {_row.Spouse}".Trim();
+        {
+            get
+            {
+                var line1 = $"ID: {_row.Id}   Spouse: {_row.Spouse}".Trim();
 
-        var street = (_row.Street ?? "").Trim();
+                var street = (_row.Street ?? "").Trim();
 
-        var city = (_row.City ?? "").Trim();
-        var state = (_row.State ?? "").Trim();
-        var zip = (_row.Zip ?? "").Trim();
+                var city = (_row.City ?? "").Trim();
+                var state = (_row.State ?? "").Trim();
+                var zip = (_row.Zip ?? "").Trim();
 
-        var line3 = BuildCityStateZip(city, state, zip);
+                var line3 = BuildCityStateZip(city, state, zip);
 
-        // Only include non-empty lines.
-        return string.Join("", new[] { line1, street, line3 }.Where(s => !string.IsNullOrWhiteSpace(s)));
-    }
-}
+                var parts = new System.Collections.Generic.List<string>();
 
-private static string BuildCityStateZip(string city, string state, string zip)
+                if (!string.IsNullOrWhiteSpace(line1)) parts.Add(line1);
+                if (!string.IsNullOrWhiteSpace(street)) parts.Add(street);
+                if (!string.IsNullOrWhiteSpace(line3)) parts.Add(line3);
+
+                return string.Join(Environment.NewLine, parts);
+            }
+        }
+
+        private static string BuildCityStateZip(string city, string state, string zip)
 {
     // "City, ST 12345" with graceful handling of missing parts.
     var left = city;
@@ -246,16 +251,14 @@ private static string BuildCityStateZip(string city, string state, string zip)
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
 
-            _selectedPreset = FrequencyPresets[1]; // Monthly
-            Frequency = _selectedPreset.ApiFrequency;
-            IsInstallmentsLocked = _selectedPreset.LockInstallments;
-            IsStartDateLockedToPledgeDate = _selectedPreset.LockStartDateToPledgeDate;
+            
+SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
 
-            SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
+// Default the dropdown to "One-time".
+SelectedPreset = FrequencyPresets[0];
 
-            NumberOfInstallmentsText = _selectedPreset.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
-            RefreshCanSave();
-        }
+RefreshCanSave();
+}
 
         private void RefreshCanSave()
         {
