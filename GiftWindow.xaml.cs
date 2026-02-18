@@ -1,13 +1,21 @@
 using System;
-using System.Threading.Tasks;
+using System.Configuration;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows;
-using System.Windows.Controls;
 
 namespace CheerfulGiverNXT
 {
     public partial class GiftWindow : Window
     {
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
+
+        /// <summary>
+        /// True when no matching "RadioFunds" tokens were found in this constituent's giving history.
+        /// This flag is computed in code-behind when the window loads.
+        /// </summary>
+        public bool NewConstituent { get; private set; }
 
         public GiftWindow(RenxtConstituentLookupService.ConstituentGridRow row)
         {
@@ -19,68 +27,74 @@ namespace CheerfulGiverNXT
             vm.RequestClose += (_, __) => Close();
             DataContext = vm;
 
-            Loaded += async (_, __) => await LoadPriorFundsAsync();
+            Loaded += GiftWindow_Loaded;
         }
 
-        private async Task LoadPriorFundsAsync()
+        private async void GiftWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            Loaded -= GiftWindow_Loaded;
+
             try
             {
-                // If the controls aren't present (designer issues), just bail safely.
-                if (PriorFundsComboBox is null || PriorFundsLabel is null)
-                    return;
-
-                // Show "loading" UX if the VM has StatusText.
-                if (DataContext is GiftEntryViewModel vm)
-                    vm.StatusText = "Loading previous funds…";
-
-                var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 500);
-
-                if (funds is null || funds.Count == 0)
+                var tokens = LoadRadioFundTokens();
+                if (tokens.Count == 0)
                 {
-                    PriorFundsLabel.Visibility = Visibility.Collapsed;
-                    PriorFundsComboBox.Visibility = Visibility.Collapsed;
-
-                    if (DataContext is GiftEntryViewModel vm2)
-                        vm2.StatusText = "Ready.";
-
+                    // If no config tokens exist, do not show the "new" banner.
+                    NewConstituent = false;
+                    ApplyBanner();
                     return;
                 }
 
-                PriorFundsComboBox.ItemsSource = funds;
+                // Pull giving history funds via Gift API (gift_splits -> fund_id) then resolve names.
+                var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 1000);
 
-                // If FundIdText is empty and there's only one prior fund, prefill it.
-                if (DataContext is GiftEntryViewModel vm3 &&
-                    string.IsNullOrWhiteSpace(vm3.FundIdText) &&
-                    funds.Count == 1)
-                {
-                    vm3.FundIdText = funds[0].Id.ToString();
-                    PriorFundsComboBox.SelectedValue = funds[0].Id;
-                }
+                var hasMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
 
-                if (DataContext is GiftEntryViewModel vm4)
-                    vm4.StatusText = "Ready.";
+                // If a match is found => NOT new.  If not found => new.
+                NewConstituent = !hasMatch;
             }
             catch
             {
-                // Don’t block gift entry if fund lookup fails.
-                if (PriorFundsLabel is not null) PriorFundsLabel.Visibility = Visibility.Collapsed;
-                if (PriorFundsComboBox is not null) PriorFundsComboBox.Visibility = Visibility.Collapsed;
-
-                if (DataContext is GiftEntryViewModel vm)
-                    vm.StatusText = "Ready. (Could not load previous funds.)";
+                // If we can't determine, keep the banner hidden (avoid false positives).
+                NewConstituent = false;
+            }
+            finally
+            {
+                ApplyBanner();
             }
         }
 
-        private void PriorFundsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void ApplyBanner()
         {
-            if (DataContext is not GiftEntryViewModel vm) return;
-            if (sender is not ComboBox cb) return;
+            if (NewConstituentBanner is not null)
+                NewConstituentBanner.Visibility = NewConstituent ? Visibility.Visible : Visibility.Collapsed;
+        }
 
-            if (cb.SelectedValue is int fundId && fundId > 0)
-            {
-                vm.FundIdText = fundId.ToString();
-            }
+        private static HashSet<string> LoadRadioFundTokens()
+        {
+            // App.config:
+            // <add key="RadioFunds" value="RADIO;NT;RBF;WCRH;" />
+            var raw = ConfigurationManager.AppSettings["RadioFunds"] ?? "";
+
+            return raw
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => x.Length > 0)
+                .Select(x => x.ToUpperInvariant())
+                .ToHashSet();
+        }
+
+        private static bool TokenMatches(string token, string fundName)
+        {
+            if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(fundName))
+                return false;
+
+            // Match whole token in the fund description/name (case-insensitive).
+            // Examples: "RADIO - Annual", "NT: News Talk", "WCRH Fund".
+            return Regex.IsMatch(
+                fundName,
+                $@"\b{Regex.Escape(token)}\b",
+                RegexOptions.IgnoreCase);
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
