@@ -1,4 +1,5 @@
-﻿using System.Windows;
+using System;
+using System.Windows;
 using System.Windows.Input;
 
 namespace CheerfulGiverNXT
@@ -8,7 +9,12 @@ namespace CheerfulGiverNXT
         public MainWindow()
         {
             InitializeComponent();
-            DataContext = new ConstituentLookupTestViewModel();
+
+            var vm = new ConstituentLookupTestViewModel();
+            DataContext = vm;
+
+            // Populate the read-only auth preview fields before the operator does anything.
+            Loaded += async (_, __) => await vm.RefreshAuthPreviewAsync();
         }
 
         private void SearchBox_KeyDown(object sender, KeyEventArgs e)
@@ -28,8 +34,7 @@ namespace CheerfulGiverNXT
             if (DataContext is not ConstituentLookupTestViewModel vm) return;
             if (vm.SelectedRow is null) return;
 
-            // Open Gift entry window
-            var w = new GiftWindow(vm.SelectedRow, vm.AccessToken, vm.SubscriptionKey);
+            var w = new GiftWindow(vm.SelectedRow);
             w.Owner = this;
             w.ShowDialog();
         }

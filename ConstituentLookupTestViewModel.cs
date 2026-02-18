@@ -1,7 +1,7 @@
-﻿using System;
+using System.Configuration;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,67 +11,62 @@ namespace CheerfulGiverNXT
 {
     public sealed class ConstituentLookupTestViewModel : INotifyPropertyChanged
     {
-        public string ClientId { get; set; } = "5e25d81f-82a3-4bcf-97ed-1cea54d5172e"; // from your Blackbaud app registration
-
+        // UI bindings
         public AsyncRelayCommand LoginCommand { get; }
+        public AsyncRelayCommand SearchCommand { get; }
+        public RelayCommand CopySelectedIdCommand { get; }
+
+        private CancellationTokenSource? _cts;
+
+        private readonly BlackbaudMachineTokenProvider _tokenProvider;
+
+        public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
 
         public ConstituentLookupTestViewModel()
         {
-            LoginCommand = new AsyncRelayCommand(LoginAsync, () => IsNotBusy);
+            _tokenProvider = App.TokenProvider;
+
+            LoginCommand = new AsyncRelayCommand(AuthorizeThisComputerAsync, () => IsNotBusy);
             SearchCommand = new AsyncRelayCommand(SearchAsync, () => IsNotBusy);
             CopySelectedIdCommand = new RelayCommand(CopySelectedId, () => HasSelection);
+
+            MachineName = Environment.MachineName;
+            AccessToken = "(checking…)";
+            SubscriptionKey = "(checking…)";
         }
 
-        private async Task LoginAsync()
+        private string _machineName = "";
+        public string MachineName
         {
-            IsBusy = true;
-            try
-            {
-                // Register this exact redirect URI in your Blackbaud app
-                const string redirectUri = "http://127.0.0.1:5001/auth/callback/";
-                const string scope = "rnxt.r";
-
-                var token = await BlackbaudPkceAuth.AcquireTokenAsync(ClientId, redirectUri, scope);
-
-                AccessToken = token.AccessToken;
-                StatusText = $"Logged in. Expires in ~{token.ExpiresIn}s.";
-            }
-            catch (Exception ex)
-            {
-                StatusText = "Login error: " + ex.Message;
-            }
-            finally
-            {
-                IsBusy = false;
-                LoginCommand.RaiseCanExecuteChanged();
-                SearchCommand.RaiseCanExecuteChanged();
-            }
+            get => _machineName;
+            private set { _machineName = value; OnPropertyChanged(); }
         }
 
+        private string _accessToken = "";
+        /// <summary>
+        /// Debug/visibility only. Not used for API calls (auth headers are injected by handler).
+        /// </summary>
+        public string AccessToken
+        {
+            get => _accessToken;
+            private set { _accessToken = value; OnPropertyChanged(); }
+        }
 
-        private readonly HttpClient _httpClient = new HttpClient();
-
-        public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
+        private string _subscriptionKey = "";
+        /// <summary>
+        /// Debug/visibility only. Not used for API calls (key header is injected by handler).
+        /// </summary>
+        public string SubscriptionKey
+        {
+            get => _subscriptionKey;
+            private set { _subscriptionKey = value; OnPropertyChanged(); }
+        }
 
         private string _searchText = "";
         public string SearchText
         {
             get => _searchText;
             set { _searchText = value; OnPropertyChanged(); }
-        }
-
-        private string _accessToken = Environment.GetEnvironmentVariable("BB_ACCESS_TOKEN") ?? "";
-        public string AccessToken
-        {
-            get => _accessToken;
-            set { _accessToken = value; OnPropertyChanged(); }
-        }
-
-        private string _subscriptionKey = Environment.GetEnvironmentVariable("BB_SUBSCRIPTION_KEY") ?? "";
-        public string SubscriptionKey
-        {
-            get => _subscriptionKey;
-            set { _subscriptionKey = value; OnPropertyChanged(); }
         }
 
         private string _statusText = "Ready.";
@@ -95,7 +90,6 @@ namespace CheerfulGiverNXT
         }
 
         public bool IsNotBusy => !IsBusy;
-
         public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
         private RenxtConstituentLookupService.ConstituentGridRow? _selectedRow;
@@ -113,10 +107,72 @@ namespace CheerfulGiverNXT
 
         public bool HasSelection => SelectedRow is not null;
 
-        public AsyncRelayCommand SearchCommand { get; }
-        public RelayCommand CopySelectedIdCommand { get; }
+        
 
-        private CancellationTokenSource? _cts;
+        /// <summary>
+        /// Loads AccessToken/SubscriptionKey preview fields for the UI (read-only debug).
+        /// Reads the subscription key directly from the GLOBAL SQL row (no auth required).
+        /// </summary>
+        public async Task RefreshAuthPreviewAsync(CancellationToken ct = default)
+        {
+            // Always try to read global subscription key (works even if this PC isn't authorized yet)
+            try
+            {
+                var globalKey = await App.SecretStore.GetGlobalSubscriptionKeyAsync(ct);
+                SubscriptionKey = globalKey is null ? "(not set in SQL)" : Preview(globalKey, 10);
+            }
+            catch
+            {
+                SubscriptionKey = "(error reading SQL)";
+            }
+
+            // Access token requires machine authorization
+            try
+            {
+                var (token, _) = await _tokenProvider.GetAsync(ct);
+                AccessToken = Preview(token, 18);
+            }
+            catch (InvalidOperationException)
+            {
+                AccessToken = "(not authorized – click Authorize this PC)";
+            }
+            catch
+            {
+                AccessToken = "(error)";
+            }
+        }
+
+// STEP 2: Authorize this computer (stores refresh token in SQL under MACHINE:<COMPUTERNAME>)
+        private async Task AuthorizeThisComputerAsync()
+        {
+            IsBusy = true;
+            StatusText = "Opening browser to authorize this computer...";
+            LoginCommand.RaiseCanExecuteChanged();
+            SearchCommand.RaiseCanExecuteChanged();
+
+            try
+            {
+                var redirectUri = BlackbaudConfig.RedirectUri;
+                const string scope = "rnxt.r";
+
+                await _tokenProvider.SeedThisMachineAsync(redirectUri, scope);
+
+                // Load + show current values (for the debug expander)
+                await LoadDebugAuthValuesAsync();
+
+                StatusText = $"Authorized for this computer ({Environment.MachineName}).";
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Authorization error: " + ex.Message;
+            }
+            finally
+            {
+                IsBusy = false;
+                LoginCommand.RaiseCanExecuteChanged();
+                SearchCommand.RaiseCanExecuteChanged();
+            }
+        }
 
         private async Task SearchAsync()
         {
@@ -127,13 +183,6 @@ namespace CheerfulGiverNXT
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(AccessToken) || string.IsNullOrWhiteSpace(SubscriptionKey))
-            {
-                StatusText = "Missing Access Token or Subscription Key.";
-                return;
-            }
-
-            // cancel prior search
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = new CancellationTokenSource();
@@ -146,15 +195,11 @@ namespace CheerfulGiverNXT
             {
                 Results.Clear();
 
-                // Ensure headers can be updated between runs by clearing prior values.
-                _httpClient.DefaultRequestHeaders.Authorization = null;
-                if (_httpClient.DefaultRequestHeaders.Contains("Bb-Api-Subscription-Key"))
-                    _httpClient.DefaultRequestHeaders.Remove("Bb-Api-Subscription-Key");
+                // Ensure we have a valid token & key (and update debug fields).
+                // API calls themselves use the shared HttpClient (headers injected by handler).
+                await LoadDebugAuthValuesAsync(_cts.Token);
 
-                // Create service (it will set BaseAddress + headers)
-                var svc = new RenxtConstituentLookupService(_httpClient, AccessToken, SubscriptionKey);
-
-                var rows = await svc.SearchGridAsync(text, _cts.Token);
+                var rows = await App.ConstituentService.SearchGridAsync(text, _cts.Token);
 
                 foreach (var row in rows)
                     Results.Add(row);
@@ -164,6 +209,11 @@ namespace CheerfulGiverNXT
             catch (OperationCanceledException)
             {
                 StatusText = "Search canceled.";
+            }
+            catch (InvalidOperationException ex)
+            {
+                StatusText = ex.Message;
+                MessageBox.Show(ex.Message, "Not Authorized", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             catch (Exception ex)
             {
@@ -175,6 +225,33 @@ namespace CheerfulGiverNXT
                 IsBusy = false;
                 SearchCommand.RaiseCanExecuteChanged();
             }
+        }
+
+        private async Task LoadDebugAuthValuesAsync(CancellationToken ct = default)
+        {
+            // Subscription key: read from GLOBAL SQL row (works even if machine auth expires).
+            try
+            {
+                var globalKey = await App.SecretStore.GetGlobalSubscriptionKeyAsync(ct);
+                SubscriptionKey = globalKey is null ? "(not set in SQL)" : Preview(globalKey, 10);
+            }
+            catch
+            {
+                SubscriptionKey = "(error reading SQL)";
+            }
+
+            // Access token: requires machine authorization (refreshes automatically if needed).
+            var (token, _) = await _tokenProvider.GetAsync(ct);
+
+            // Don't show the full token on-screen; show a preview.
+            AccessToken = Preview(token, 18);
+        }
+
+        private static string Preview(string s, int take)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "(empty)";
+            s = s.Trim();
+            return s.Length <= take ? s : s.Substring(0, take) + "…";
         }
 
         private void CopySelectedId()

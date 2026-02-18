@@ -85,7 +85,9 @@ namespace CheerfulGiverNXT
                     ExpiresAtUtc: refreshed.ExpiresAtUtc,
                     TokenType: refreshed.TokenType,
                     Scope: refreshed.Scope,
-                    SubscriptionKey: machine.SubscriptionKey // keep whatever machine row had; global is read separately
+                    // Keep whatever machine row had; global is read separately.
+                    // Coalesce to "" to satisfy nullable analysis and to avoid writing NULL unless you explicitly choose to.
+                    SubscriptionKey: machine.SubscriptionKey ?? ""
                 );
 
                 await _store.UpsertAsync(conn, machineKey, updated, ct).ConfigureAwait(false);

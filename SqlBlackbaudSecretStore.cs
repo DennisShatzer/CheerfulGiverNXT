@@ -104,6 +104,17 @@ namespace CheerfulGiverNXT
             return string.IsNullOrWhiteSpace(global.SubscriptionKey) ? null : global.SubscriptionKey;
         }
 
+
+        /// <summary>
+        /// Convenience overload: opens its own connection and reads the global subscription key.
+        /// </summary>
+        public async Task<string?> GetGlobalSubscriptionKeyAsync(CancellationToken ct = default)
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+            return await GetGlobalSubscriptionKeyAsync(conn, ct).ConfigureAwait(false);
+        }
+
         public async Task SetGlobalSubscriptionKeyAsync(string subscriptionKey, CancellationToken ct = default)
         {
             await using var conn = new SqlConnection(_connectionString);

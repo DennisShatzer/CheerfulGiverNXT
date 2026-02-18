@@ -1,14 +1,14 @@
-﻿using System.Windows;
+using System.Windows;
 
 namespace CheerfulGiverNXT
 {
     public partial class GiftWindow : Window
     {
-        public GiftWindow(RenxtConstituentLookupService.ConstituentGridRow row, string accessToken, string subscriptionKey)
+        public GiftWindow(RenxtConstituentLookupService.ConstituentGridRow row)
         {
             InitializeComponent();
 
-            var vm = new GiftEntryViewModel(row, accessToken, subscriptionKey);
+            var vm = new GiftEntryViewModel(row, App.GiftService);
             vm.RequestClose += (_, __) => Close();
             DataContext = vm;
         }

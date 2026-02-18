@@ -1,4 +1,4 @@
-﻿// GiftEntryViewModel.cs
+// GiftEntryViewModel.cs
 // Pledge entry screen VM (pledge commitments only) with a friendly “One-time (single installment)” option.
 // Requires RenxtGiftServer.cs and AsyncRelayCommand.cs in the same project/namespace.
 
@@ -13,7 +13,6 @@ namespace CheerfulGiverNXT
 {
     public sealed class GiftEntryViewModel : INotifyPropertyChanged
     {
-        // --- Helper type for the frequency combobox ---
         public sealed record FrequencyPreset(
             string Display,
             PledgeFrequency ApiFrequency,
@@ -22,9 +21,10 @@ namespace CheerfulGiverNXT
             bool LockStartDateToPledgeDate
         );
 
-        // Bind your ComboBox to this list (DisplayMemberPath="Display", SelectedItem=SelectedPreset)
         public FrequencyPreset[] FrequencyPresets { get; } =
         {
+            // “One-time donation” UX: still uses Monthly in API (frequency value is required),
+            // but forces number_of_installments = 1 and start_date = pledge_date.
             new("One-time (single installment)", PledgeFrequency.Monthly, 1,  true,  true),
             new("Monthly",                       PledgeFrequency.Monthly, 12, false, false),
             new("Quarterly",                     PledgeFrequency.Quarterly, 4,  false, false),
@@ -44,7 +44,6 @@ namespace CheerfulGiverNXT
         public string ConstituentSummary =>
             $"ID: {_row.Id}   Spouse: {_row.Spouse}\n{_row.Street}, {_row.City}, {_row.State} {_row.Zip}";
 
-        // --- UI fields ---
         private string _amountText = "";
         public string AmountText
         {
@@ -61,10 +60,8 @@ namespace CheerfulGiverNXT
                 _pledgeDate = value;
                 OnPropertyChanged();
 
-                // If preset locks start date to pledge date, keep them in sync
                 if (IsStartDateLockedToPledgeDate && _pledgeDate.HasValue)
                 {
-                    // Avoid unnecessary setter churn
                     if (FirstInstallmentDate != _pledgeDate.Value.Date)
                         FirstInstallmentDate = _pledgeDate.Value.Date;
                 }
@@ -82,7 +79,6 @@ namespace CheerfulGiverNXT
                 _firstInstallmentDate = value;
                 OnPropertyChanged();
 
-                // If locked, enforce equality with pledge date
                 if (IsStartDateLockedToPledgeDate && PledgeDate.HasValue)
                 {
                     var pd = PledgeDate.Value.Date;
@@ -97,7 +93,6 @@ namespace CheerfulGiverNXT
             }
         }
 
-        // This is the value that goes to the API schedule.frequency
         private PledgeFrequency _frequency = PledgeFrequency.Monthly;
         public PledgeFrequency Frequency
         {
@@ -137,11 +132,9 @@ namespace CheerfulGiverNXT
 
                 Frequency = value.ApiFrequency;
 
-                // Set default installments (and optionally lock the box)
                 NumberOfInstallmentsText = value.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
                 IsInstallmentsLocked = value.LockInstallments;
 
-                // Optionally lock start date to pledge date (one-time preset)
                 IsStartDateLockedToPledgeDate = value.LockStartDateToPledgeDate;
                 if (IsStartDateLockedToPledgeDate && PledgeDate.HasValue)
                     FirstInstallmentDate = PledgeDate.Value.Date;
@@ -178,7 +171,6 @@ namespace CheerfulGiverNXT
             set { _packageIdText = value; OnPropertyChanged(); }
         }
 
-        // Kept for your UI; RenxtGiftServer currently does not send "send_reminder"
         private bool _sendReminder = false;
         public bool SendReminder
         {
@@ -216,12 +208,11 @@ namespace CheerfulGiverNXT
 
         public AsyncRelayCommand SaveCommand { get; }
 
-        public GiftEntryViewModel(RenxtConstituentLookupService.ConstituentGridRow row, string accessToken, string subscriptionKey)
+        public GiftEntryViewModel(RenxtConstituentLookupService.ConstituentGridRow row, RenxtGiftServer giftServer)
         {
-            _row = row;
-            _gifts = new RenxtGiftServer(accessToken, subscriptionKey);
+            _row = row ?? throw new ArgumentNullException(nameof(row));
+            _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
 
-            // Default preset
             _selectedPreset = FrequencyPresets[1]; // Monthly
             Frequency = _selectedPreset.ApiFrequency;
             IsInstallmentsLocked = _selectedPreset.LockInstallments;
@@ -229,7 +220,6 @@ namespace CheerfulGiverNXT
 
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
 
-            // Ensure defaults are consistent with the preset
             NumberOfInstallmentsText = _selectedPreset.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
             RefreshCanSave();
         }
@@ -294,10 +284,15 @@ namespace CheerfulGiverNXT
             {
                 StatusText = "Save error: " + ex.Message;
 
-                File.AppendAllText(
-                    "D:\\CodeProjects\\CheerfulGiverNXT\\CheerfulErrors.txt",
-                    $"{DateTime.Now}: An error occurred: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}"
-                );
+                // Keep your existing log file path as-is
+                try
+                {
+                    File.AppendAllText(
+                        "D:\\CodeProjects\\CheerfulGiverNXT\\CheerfulErrors.txt",
+                        $"{DateTime.Now}: An error occurred: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}"
+                    );
+                }
+                catch { /* ignore */ }
             }
             finally
             {

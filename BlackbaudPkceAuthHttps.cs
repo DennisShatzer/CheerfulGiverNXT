@@ -60,10 +60,10 @@ namespace CheerfulGiverNXT
             if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var redir))
                 throw new ArgumentException("redirectUri must be an absolute URI.", nameof(redirectUri));
 
-            if (!string.Equals(redir.Scheme, "https", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("This HTTPS helper expects an https:// redirectUri.", nameof(redirectUri));
-
-            if (!redir.IsLoopback)
+            if (!string.Equals(redir.Scheme, "http", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(redir.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("redirectUri must be http:// or https:// and must exactly match the Redirect URI configured in Blackbaud (including trailing slash).", nameof(redirectUri));
+if (!redir.IsLoopback)
                 throw new ArgumentException("redirectUri must be a loopback URI (localhost/127.0.0.1/::1).", nameof(redirectUri));
 
             if (redir.Port <= 1024)

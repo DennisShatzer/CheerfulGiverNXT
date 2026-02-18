@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -27,19 +27,14 @@ namespace CheerfulGiverNXT
         private readonly HttpClient _http;
         private static readonly Regex StartsWithNumber = new(@"^\s*\d+", RegexOptions.Compiled);
 
-        public RenxtConstituentLookupService(HttpClient http, string accessToken, string subscriptionKey)
+        // IMPORTANT: Do not set auth headers here.
+        // They are injected per request by BlackbaudAuthHandler.
+        public RenxtConstituentLookupService(HttpClient http)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
 
             if (_http.BaseAddress is null)
                 _http.BaseAddress = new Uri("https://api.sky.blackbaud.com/");
-
-            // If you set these elsewhere globally, remove these lines.
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            if (_http.DefaultRequestHeaders.Contains("Bb-Api-Subscription-Key"))
-                _http.DefaultRequestHeaders.Remove("Bb-Api-Subscription-Key");
-            _http.DefaultRequestHeaders.Add("Bb-Api-Subscription-Key", subscriptionKey);
 
             if (!_http.DefaultRequestHeaders.Accept.Any(h => h.MediaType == "application/json"))
                 _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -142,21 +137,16 @@ namespace CheerfulGiverNXT
 
         private static IEnumerable<int> ExtractIds(JsonElement root)
         {
-            // Most SKY list/search endpoints: { "count": n, "value": [ ... ] }
             if (root.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in value.EnumerateArray())
                 {
-                    // id can be Number or String depending on payload shape
                     if (item.TryGetProperty("id", out var idProp) && TryReadInt32(idProp, out var id))
                         yield return id;
-
-                    // sometimes record_id exists instead
                     else if (item.TryGetProperty("record_id", out var ridProp) && TryReadInt32(ridProp, out var rid))
                         yield return rid;
                 }
             }
-            // Some APIs use { "results": [ ... ] }
             else if (root.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in results.EnumerateArray())
