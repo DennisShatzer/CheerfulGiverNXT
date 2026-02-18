@@ -1,51 +1,45 @@
 using System;
-using System.Configuration;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace CheerfulGiverNXT
 {
     public partial class GiftWindow : Window
     {
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
-
-        /// <summary>
-        /// True when no matching "RadioFunds" tokens were found in this constituent's giving history.
-        /// This flag is computed in code-behind when the window loads.
-        /// </summary>
-        public bool NewConstituent { get; private set; }
+        private bool _newConstituent;
 
         public GiftWindow(RenxtConstituentLookupService.ConstituentGridRow row)
         {
+            _row = row ?? throw new ArgumentNullException(nameof(row));
+
             InitializeComponent();
 
-            _row = row;
-
-            // Defensive: if anything left the app in a forced "busy" cursor state,
-            // clear it when this modal entry window opens.
-            Mouse.OverrideCursor = null;
-            Cursor = Cursors.Arrow;
-            Closed += (_, __) => Mouse.OverrideCursor = null;
-
-            var vm = new GiftEntryViewModel(row, App.GiftService);
+            var vm = new GiftEntryViewModel(_row, App.GiftService);
             vm.RequestClose += (_, __) => Close();
             DataContext = vm;
-
-            Loaded += GiftWindow_Loaded;
         }
+
+        private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
 
         private async void GiftWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // Run once.
             Loaded -= GiftWindow_Loaded;
 
             // Make sure the operator can start typing immediately.
-            AmountTextBox?.Focus();
-            AmountTextBox?.SelectAll();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                AmountTextBox?.Focus();
+                AmountTextBox?.SelectAll();
+            }), DispatcherPriority.Input);
 
-            // Also clear any lingering busy cursor (some callers set Mouse.OverrideCursor).
+            // Clear any lingering busy cursor (some callers set Mouse.OverrideCursor).
             Mouse.OverrideCursor = null;
             Cursor = Cursors.Arrow;
 
@@ -55,7 +49,7 @@ namespace CheerfulGiverNXT
                 if (tokens.Count == 0)
                 {
                     // If no config tokens exist, do not show the "new" banner.
-                    NewConstituent = false;
+                    _newConstituent = false;
                     return;
                 }
 
@@ -65,38 +59,41 @@ namespace CheerfulGiverNXT
                 var hasMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
 
                 // If a match is found => NOT new. If not found => new.
-                NewConstituent = !hasMatch;
+                _newConstituent = !hasMatch;
             }
             catch
             {
                 // If we can't determine, keep the banner hidden (avoid false positives).
-                NewConstituent = false;
+                _newConstituent = false;
             }
             finally
             {
                 ApplyBanner();
                 Mouse.OverrideCursor = null;
+                Cursor = Cursors.Arrow;
             }
         }
 
         private void ApplyBanner()
         {
-            if (NewConstituentBanner is not null)
-                NewConstituentBanner.Visibility = NewConstituent ? Visibility.Visible : Visibility.Collapsed;
+            if (NewConstituentBanner is null)
+                return;
+
+            NewConstituentBanner.Visibility = _newConstituent ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private static HashSet<string> LoadRadioFundTokens()
+        private static List<string> LoadRadioFundTokens()
         {
-            // App.config:
-            // <add key="RadioFunds" value="RADIO;NT;RBF;WCRH;" />
-            var raw = ConfigurationManager.AppSettings["RadioFunds"] ?? "";
+            var raw = (ConfigurationManager.AppSettings["RadioFunds"] ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+                return new List<string>();
 
             return raw
                 .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0)
-                .Select(x => x.ToUpperInvariant())
-                .ToHashSet();
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private static bool TokenMatches(string token, string fundName)
@@ -104,13 +101,11 @@ namespace CheerfulGiverNXT
             if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(fundName))
                 return false;
 
-            // Match whole token in the fund description/name (case-insensitive).
+            // Whole-word, case-insensitive match (reduces false positives for short tokens like "NT").
             return Regex.IsMatch(
                 fundName,
                 $@"\b{Regex.Escape(token)}\b",
-                RegexOptions.IgnoreCase);
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
-
-        private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
     }
 }
