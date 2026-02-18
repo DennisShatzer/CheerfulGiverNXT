@@ -1,5 +1,5 @@
 // GiftEntryViewModel.cs
-// Pledge entry screen VM (pledge commitments only) with a friendly “One-time (single installment)” option.
+// Pledge entry screen VM (pledge commitments only) with a friendly “One-time” option.
 // Requires RenxtGiftServer.cs and AsyncRelayCommand.cs in the same project/namespace.
 
 using System;
@@ -25,7 +25,7 @@ namespace CheerfulGiverNXT
         {
             // “One-time donation” UX: still uses Monthly in API (frequency value is required),
             // but forces number_of_installments = 1 and start_date = pledge_date.
-            new("One-time (single installment)", PledgeFrequency.Monthly, 1,  true,  true),
+            new("One-time",                     PledgeFrequency.Monthly, 1,  true,  true),
             new("Monthly",                       PledgeFrequency.Monthly, 12, false, false),
             new("Quarterly",                     PledgeFrequency.Quarterly, 4,  false, false),
             new("Annually",                      PledgeFrequency.Annually, 1,  false, false),
@@ -135,12 +135,33 @@ namespace CheerfulGiverNXT
                 NumberOfInstallmentsText = value.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
                 IsInstallmentsLocked = value.LockInstallments;
 
+                
                 IsStartDateLockedToPledgeDate = value.LockStartDateToPledgeDate;
-                if (IsStartDateLockedToPledgeDate && PledgeDate.HasValue)
-                    FirstInstallmentDate = PledgeDate.Value.Date;
+
+                if (IsStartDateLockedToPledgeDate)
+                {
+                    // One-time: force start date to pledge date.
+                    if (PledgeDate.HasValue)
+                        FirstInstallmentDate = PledgeDate.Value.Date;
+                }
+                else
+                {
+                    // If the operator switches away from One-time, default the first installment to next month
+                    // (keeps the old behavior without exposing the date field in the UI).
+                    if (PledgeDate.HasValue)
+                    {
+                        var pd = PledgeDate.Value.Date;
+                        if (!FirstInstallmentDate.HasValue || FirstInstallmentDate.Value.Date == pd)
+                            FirstInstallmentDate = pd.AddMonths(1);
+                    }
+                    else if (!FirstInstallmentDate.HasValue)
+                    {
+                        FirstInstallmentDate = DateTime.Today.AddMonths(1);
+                    }
+                }
 
                 RefreshCanSave();
-            }
+}
         }
 
         private string _fundIdText = "86";
@@ -213,16 +234,12 @@ namespace CheerfulGiverNXT
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
 
-            _selectedPreset = FrequencyPresets[1]; // Monthly
-            Frequency = _selectedPreset.ApiFrequency;
-            IsInstallmentsLocked = _selectedPreset.LockInstallments;
-            IsStartDateLockedToPledgeDate = _selectedPreset.LockStartDateToPledgeDate;
-
+            
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
 
-            NumberOfInstallmentsText = _selectedPreset.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
-            RefreshCanSave();
-        }
+            // Default the dropdown to "One-time"
+            SelectedPreset = FrequencyPresets[0];
+}
 
         private void RefreshCanSave()
         {

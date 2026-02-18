@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Input;
 
 namespace CheerfulGiverNXT
 {
@@ -23,6 +24,12 @@ namespace CheerfulGiverNXT
 
             _row = row;
 
+            // Defensive: if anything left the app in a forced "busy" cursor state,
+            // clear it when this modal entry window opens.
+            Mouse.OverrideCursor = null;
+            Cursor = Cursors.Arrow;
+            Closed += (_, __) => Mouse.OverrideCursor = null;
+
             var vm = new GiftEntryViewModel(row, App.GiftService);
             vm.RequestClose += (_, __) => Close();
             DataContext = vm;
@@ -34,6 +41,14 @@ namespace CheerfulGiverNXT
         {
             Loaded -= GiftWindow_Loaded;
 
+            // Make sure the operator can start typing immediately.
+            AmountTextBox?.Focus();
+            AmountTextBox?.SelectAll();
+
+            // Also clear any lingering busy cursor (some callers set Mouse.OverrideCursor).
+            Mouse.OverrideCursor = null;
+            Cursor = Cursors.Arrow;
+
             try
             {
                 var tokens = LoadRadioFundTokens();
@@ -41,7 +56,6 @@ namespace CheerfulGiverNXT
                 {
                     // If no config tokens exist, do not show the "new" banner.
                     NewConstituent = false;
-                    ApplyBanner();
                     return;
                 }
 
@@ -50,7 +64,7 @@ namespace CheerfulGiverNXT
 
                 var hasMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
 
-                // If a match is found => NOT new.  If not found => new.
+                // If a match is found => NOT new. If not found => new.
                 NewConstituent = !hasMatch;
             }
             catch
@@ -61,6 +75,7 @@ namespace CheerfulGiverNXT
             finally
             {
                 ApplyBanner();
+                Mouse.OverrideCursor = null;
             }
         }
 
@@ -90,7 +105,6 @@ namespace CheerfulGiverNXT
                 return false;
 
             // Match whole token in the fund description/name (case-insensitive).
-            // Examples: "RADIO - Annual", "NT: News Talk", "WCRH Fund".
             return Regex.IsMatch(
                 fundName,
                 $@"\b{Regex.Escape(token)}\b",
