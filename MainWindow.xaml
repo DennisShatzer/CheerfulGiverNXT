@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="CheerfulGiverNXT Constituent Lookup" Height="720" Width="1100"
+        Title="NXT Constituent Lookup Test" Height="720" Width="1100"
         WindowStartupLocation="CenterScreen">
 
     <Grid Margin="12">
@@ -17,29 +17,28 @@
 
         <!-- Search row -->
         <DockPanel Grid.Row="0" LastChildFill="True">
-            <!-- Right-anchored -->
-            <Button DockPanel.Dock="Right"
-                    Content="Authorize"
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox Width="420"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     VerticalAlignment="Center"
+                     Margin="0,0,8,0"
+                     ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
+                     KeyDown="SearchBox_KeyDown"/>
+            <Button Content="Search"
+                    Width="110"
+                    Margin="0,0,8,0"
+                    Command="{Binding SearchCommand}"
+                    IsEnabled="{Binding IsNotBusy}"/>
+            <Button Content="Authorize this PC"
                     Width="140"
-                    Margin="8,0,0,0"
+                    Margin="0,0,8,0"
                     Command="{Binding LoginCommand}"
                     IsEnabled="{Binding IsNotBusy}"/>
 
-            <!-- Left group -->
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <TextBox Width="420"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         VerticalAlignment="Center"
-                         Margin="0,0,8,0"
-                         ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
-                         KeyDown="SearchBox_KeyDown"/>
-                <Button Content="Search"
-                        Width="110"
-                        Margin="0,0,8,0"
-                        Command="{Binding SearchCommand}"
-                        IsEnabled="{Binding IsNotBusy}"/>
-            </StackPanel>
+            <Button Content="Copy Selected ID"
+                    Width="150"
+                    Command="{Binding CopySelectedIdCommand}"
+                    IsEnabled="{Binding HasSelection}"/>
         </DockPanel>
 
         <!-- Auth debug (read-only) -->
@@ -93,14 +92,18 @@
                   EnableRowVirtualization="True"
                   EnableColumnVirtualization="True">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="120"/>
-                <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="220"/>
-                <DataGridTextColumn Header="Spouse" Binding="{Binding Spouse}" Width="180"/>
-                <DataGridTextColumn Header="Street address" Binding="{Binding Street}" Width="260"/>
-                <DataGridTextColumn Header="City" Binding="{Binding City}" Width="160"/>
-                <DataGridTextColumn Header="State" Binding="{Binding State}" Width="80"/>
-                <DataGridTextColumn Header="ZIP" Binding="{Binding Zip}" Width="90"/>
-            </DataGrid.Columns>
+    <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="120"/>
+
+    <!-- Wider / more flexible columns -->
+    <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="2*" MinWidth="260"/>
+    <DataGridTextColumn Header="Spouse" Binding="{Binding Spouse}" Width="1.5*" MinWidth="220"/>
+    <DataGridTextColumn Header="Street address" Binding="{Binding Street}" Width="3*" MinWidth="360"/>
+
+    <DataGridTextColumn Header="City" Binding="{Binding City}" Width="1.5*" MinWidth="180"/>
+    <DataGridTextColumn Header="State" Binding="{Binding State}" Width="90"/>
+
+    <DataGridTextColumn Header="ZIP" Binding="{Binding Zip}" Width="1*" MinWidth="120"/>
+</DataGrid.Columns>
         </DataGrid>
 
         <!-- Status bar -->

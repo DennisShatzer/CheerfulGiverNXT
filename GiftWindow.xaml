@@ -37,34 +37,43 @@
         <!-- Simplified entry fields: Amount + Frequency only -->
         <Grid Grid.Row="1" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="180"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="180"/>
+                <!-- Label column -->
+                <ColumnDefinition Width="Auto" MinWidth="110"/>
+                <!-- Field column -->
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
+
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- Amount -->
             <TextBlock Grid.Row="0" Grid.Column="0"
                        Text="Amount:"
+                       HorizontalAlignment="Right"
                        VerticalAlignment="Center"
-                       Margin="0,0,8,6"/>
+                       Margin="0,0,8,8"/>
+
             <TextBox x:Name="AmountTextBox"
                      Grid.Row="0" Grid.Column="1"
                      Text="{Binding AmountText, UpdateSourceTrigger=PropertyChanged}"
-                     Margin="0,0,12,6"/>
+                     Margin="0,0,0,8"/>
 
-            <TextBlock Grid.Row="0" Grid.Column="2"
+            <!-- Frequency -->
+            <TextBlock Grid.Row="1" Grid.Column="0"
                        Text="Frequency:"
+                       HorizontalAlignment="Right"
                        VerticalAlignment="Center"
-                       Margin="0,0,8,6"/>
-            <ComboBox Grid.Row="0" Grid.Column="3"
+                       Margin="0,0,8,0"/>
+
+            <ComboBox Grid.Row="1" Grid.Column="1"
                       ItemsSource="{Binding FrequencyPresets}"
                       SelectedItem="{Binding SelectedPreset}"
                       DisplayMemberPath="Display"
-                      Margin="0,0,0,6"/>
+                      Margin="0"/>
         </Grid>
+
 
         <!-- Comments (optional) -->
         <TextBox Grid.Row="2"
