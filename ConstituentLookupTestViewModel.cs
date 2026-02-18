@@ -20,7 +20,10 @@ namespace CheerfulGiverNXT
 
         private readonly BlackbaudMachineTokenProvider _tokenProvider;
 
+
         public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
+
+        public RenxtConstituentLookupService LookupService => App.ConstituentService;
 
         public ConstituentLookupTestViewModel()
         {

@@ -50,14 +50,33 @@ namespace CheerfulGiverNXT
             }
         }
 
-        private void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        private async void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (DataContext is not ConstituentLookupTestViewModel vm) return;
             if (vm.SelectedRow is null) return;
 
-            var w = new GiftWindow(vm.SelectedRow);
-            w.Owner = this;
-            w.ShowDialog();
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                // OPTION A (recommended): expose the service from the VM
+                // e.g. vm.Api or vm.LookupService (see below)
+                var funds = await vm.LookupService.GetContributedFundsAsync(
+                    vm.SelectedRow.Id,
+                    maxGiftsToScan: 500);
+
+                // For now you can just pass funds along (after you add a ctor overload),
+                // or even just display them as a quick proof:
+                // MessageBox.Show(string.Join(Environment.NewLine, funds.Select(f => $"{f.Id} - {f.Name}")));
+
+                var w = new GiftWindow(vm.SelectedRow /*, funds */);
+                w.Owner = this;
+                w.ShowDialog();
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
         }
 
         private void UpdateTokenCountdown()

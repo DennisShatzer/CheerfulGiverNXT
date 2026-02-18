@@ -11,6 +11,10 @@ using System.Threading.Tasks;
 
 namespace CheerfulGiverNXT
 {
+    /// <summary>
+    /// Minimal service used by the app to query RENXT via SKY API.
+    /// Note: auth + subscription headers are injected by your BlackbaudAuthHandler on the shared HttpClient.
+    /// </summary>
     public sealed class RenxtConstituentLookupService
     {
         public record ConstituentGridRow(
@@ -24,8 +28,22 @@ namespace CheerfulGiverNXT
             string? LookupId = null
         );
 
+        /// <summary>
+        /// Simple fund reference (derived from gift splits).
+        /// </summary>
+        public record FundRef(int Id, string Name)
+        {
+            public string Display => $"{Id} - {Name}";
+        }
+
         private readonly HttpClient _http;
         private static readonly Regex StartsWithNumber = new(@"^\s*\d+", RegexOptions.Compiled);
+
+        // Fund name cache (fund list changes infrequently; caching avoids repeated calls)
+        private readonly SemaphoreSlim _fundCacheLock = new(1, 1);
+        private Dictionary<int, string>? _fundNameCache;
+        private DateTimeOffset _fundCacheLoadedAtUtc = DateTimeOffset.MinValue;
+        private static readonly TimeSpan FundCacheTtl = TimeSpan.FromHours(12);
 
         // IMPORTANT: Do not set auth headers here.
         // They are injected per request by BlackbaudAuthHandler.
@@ -76,6 +94,93 @@ namespace CheerfulGiverNXT
 
             var rows = await Task.WhenAll(tasks);
             return rows.Where(r => r is not null).Cast<ConstituentGridRow>().ToList();
+        }
+
+        /// <summary>
+        /// Returns the distinct funds this constituent has given to, based on Gift List -> gift_splits -> fund_id.
+        /// </summary>
+        public async Task<IReadOnlyList<FundRef>> GetContributedFundsAsync(
+            int constituentId,
+            int maxGiftsToScan = 500,
+            CancellationToken ct = default)
+        {
+            var fundIds = await GetContributedFundIdsAsync(constituentId, maxGiftsToScan, ct);
+            if (fundIds.Count == 0)
+                return Array.Empty<FundRef>();
+
+            var nameMap = await GetFundNameMapAsync(ct);
+
+            return fundIds
+                .Select(id =>
+                {
+                    var name = nameMap.TryGetValue(id, out var n) && !string.IsNullOrWhiteSpace(n) ? n : $"Fund #{id}";
+                    return new FundRef(id, name);
+                })
+                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Returns distinct fund IDs the constituent has contributed to, by scanning gifts and their splits.
+        /// </summary>
+        public async Task<IReadOnlyList<int>> GetContributedFundIdsAsync(
+            int constituentId,
+            int maxGiftsToScan = 500,
+            CancellationToken ct = default)
+        {
+            if (constituentId <= 0)
+                return Array.Empty<int>();
+
+            maxGiftsToScan = Math.Max(1, maxGiftsToScan);
+
+            const int pageSize = 200;
+            var fundIds = new HashSet<int>();
+
+            var offset = 0;
+            while (offset < maxGiftsToScan)
+            {
+                var limit = Math.Min(pageSize, maxGiftsToScan - offset);
+
+                // Gift List endpoint filtered by constituent_id.
+                var url = $"gift/v1/gifts?constituent_id={constituentId}&limit={limit}&offset={offset}";
+
+                using var resp = await SendWithRetryAfterAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
+                resp.EnsureSuccessStatusCode();
+
+                using var stream = await resp.Content.ReadAsStreamAsync(ct);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+                var gifts = ExtractItems(doc.RootElement).ToList();
+                if (gifts.Count == 0)
+                    break;
+
+                foreach (var gift in gifts)
+                {
+                    if (gift.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    // gift_splits is an array; each split can include fund_id.
+                    if (!gift.TryGetProperty("gift_splits", out var splits) || splits.ValueKind != JsonValueKind.Array)
+                        continue;
+
+                    foreach (var split in splits.EnumerateArray())
+                    {
+                        if (split.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        if (split.TryGetProperty("fund_id", out var fundIdEl) && TryReadInt32(fundIdEl, out var fundId) && fundId > 0)
+                            fundIds.Add(fundId);
+                    }
+                }
+
+                offset += gifts.Count;
+
+                // If we got fewer than requested, we reached the end.
+                if (gifts.Count < limit)
+                    break;
+            }
+
+            return fundIds.OrderBy(x => x).ToList();
         }
 
         private async Task<ConstituentGridRow?> GetGridRowAsync(int id, CancellationToken ct)
@@ -155,6 +260,36 @@ namespace CheerfulGiverNXT
             }
         }
 
+        /// <summary>
+        /// Extracts the array of items from common SKY API list responses ("value" or "results"),
+        /// but also handles a raw JSON array defensively.
+        /// </summary>
+        private static IEnumerable<JsonElement> ExtractItems(JsonElement root)
+        {
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in root.EnumerateArray())
+                    yield return item;
+                yield break;
+            }
+
+            if (root.ValueKind != JsonValueKind.Object)
+                yield break;
+
+            if (root.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in value.EnumerateArray())
+                    yield return item;
+                yield break;
+            }
+
+            if (root.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in results.EnumerateArray())
+                    yield return item;
+            }
+        }
+
         private static bool TryReadInt32(JsonElement el, out int value)
         {
             value = 0;
@@ -166,6 +301,73 @@ namespace CheerfulGiverNXT
                 return int.TryParse(el.GetString(), out value);
 
             return false;
+        }
+
+        private async Task<Dictionary<int, string>> GetFundNameMapAsync(CancellationToken ct)
+        {
+            if (_fundNameCache is not null && (DateTimeOffset.UtcNow - _fundCacheLoadedAtUtc) < FundCacheTtl)
+                return _fundNameCache;
+
+            await _fundCacheLock.WaitAsync(ct);
+            try
+            {
+                if (_fundNameCache is not null && (DateTimeOffset.UtcNow - _fundCacheLoadedAtUtc) < FundCacheTtl)
+                    return _fundNameCache;
+
+                var map = new Dictionary<int, string>();
+
+                const int pageSize = 5000;
+                var offset = 0;
+
+                while (true)
+                {
+                    // Fundraising -> funds list
+                    var url = $"fundraising/v1/funds?include_inactive=true&limit={pageSize}&offset={offset}";
+
+                    using var resp = await SendWithRetryAfterAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
+                    resp.EnsureSuccessStatusCode();
+
+                    using var stream = await resp.Content.ReadAsStreamAsync(ct);
+                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+                    var funds = ExtractItems(doc.RootElement).ToList();
+                    if (funds.Count == 0)
+                        break;
+
+                    foreach (var fund in funds)
+                    {
+                        if (fund.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        if (!fund.TryGetProperty("id", out var idEl) || !TryReadInt32(idEl, out var id) || id <= 0)
+                            continue;
+
+                        var name =
+                            GetString(fund, "description")
+                            .IfBlank(GetString(fund, "name"))
+                            .IfBlank(GetString(fund, "title"));
+
+                        if (!map.ContainsKey(id))
+                            map[id] = name;
+                    }
+
+                    offset += funds.Count;
+                    if (funds.Count < pageSize)
+                        break;
+
+                    // Safety: avoid infinite loops if the API ignores offset.
+                    if (offset > 200_000)
+                        break;
+                }
+
+                _fundNameCache = map;
+                _fundCacheLoadedAtUtc = DateTimeOffset.UtcNow;
+                return map;
+            }
+            finally
+            {
+                _fundCacheLock.Release();
+            }
         }
 
         private static string BuildName(JsonElement root)
