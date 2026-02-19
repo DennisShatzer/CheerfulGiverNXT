@@ -116,23 +116,41 @@
                 </ComboBox.Style>
             </ComboBox>
 
-            <!-- Sponsor date (appears when Sponsorship is shown) -->
-            <TextBlock Grid.Row="3" Grid.Column="0"
-                       Text="Sponsor date:"
-                       HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
+            <!-- Sponsor date (shown only when Sponsorship is shown) -->
+<TextBlock Grid.Row="3" Grid.Column="0"
+           Text="Sponsor date:"
+           HorizontalAlignment="Right"
+           VerticalAlignment="Center"
+           Margin="0,0,8,0">
+    <TextBlock.Style>
+        <!-- IMPORTANT: BasedOn keeps your global/implicit font sizing -->
+        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </TextBlock.Style>
+</TextBlock>
+
+<DatePicker Grid.Row="3" Grid.Column="1"
+            SelectedDate="{Binding SponsorshipDate}"
+            Margin="0">
+    <DatePicker.Style>
+        <!-- Same idea for DatePicker so it matches the rest of the form -->
+        <Style TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </DatePicker.Style>
+</DatePicker>
+
 
             <DatePicker Grid.Row="3" Grid.Column="1"
                         SelectedDate="{Binding SponsorshipDate}"

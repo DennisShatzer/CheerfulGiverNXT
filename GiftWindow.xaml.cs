@@ -32,7 +32,7 @@ namespace CheerfulGiverNXT
             Loaded -= GiftWindow_Loaded;
 
             // Make sure the operator can start typing immediately (after layout).
-            Dispatcher.BeginInvoke(new Action(() =>
+            await Dispatcher.BeginInvoke(new Action(() =>
             {
                 AmountTextBox?.Focus();
                 AmountTextBox?.SelectAll();
