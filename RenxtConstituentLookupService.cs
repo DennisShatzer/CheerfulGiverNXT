@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -29,6 +30,7 @@ namespace CheerfulGiverNXT
 
         private readonly HttpClient _http;
         private static readonly Regex StartsWithNumber = new(@"^\s*\d+", RegexOptions.Compiled);
+        private static readonly Regex DigitsOnly = new(@"\D+", RegexOptions.Compiled);
 
         // Fund name cache (to avoid calling /fundraising/v1/funds repeatedly).
         private readonly SemaphoreSlim _fundCacheLock = new(1, 1);
@@ -47,6 +49,230 @@ namespace CheerfulGiverNXT
 
             if (!_http.DefaultRequestHeaders.Accept.Any(h => h.MediaType == "application/json"))
                 _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+
+        public sealed record CreatedConstituent(int Id, IReadOnlyList<string> Warnings);
+
+        /// <summary>
+        /// Creates an Individual constituent. Creates the constituent first, then attempts to add email/phone/address.
+        /// Returns the created constituent id and any non-fatal warnings (e.g., contact info couldn't be added).
+        /// </summary>
+        public async Task<CreatedConstituent> CreateIndividualConstituentAsync(
+            string? firstName,
+            string lastName,
+            string? email,
+            string? phone,
+            string? addressLine1,
+            string? addressLine2,
+            string? city,
+            string? state,
+            string? postalCode,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(lastName))
+                throw new ArgumentException("Last name is required.", nameof(lastName));
+
+            // 1) Create the constituent (minimal payload is the most reliable).
+            var createPayload = new Dictionary<string, object?>
+            {
+                ["type"] = "Individual",
+                ["last"] = lastName.Trim()
+            };
+            if (!string.IsNullOrWhiteSpace(firstName))
+                createPayload["first"] = firstName.Trim();
+
+            var createJson = JsonSerializer.Serialize(createPayload);
+
+            using var createResp = await SendWithRetryAfterAsync(
+                () => new HttpRequestMessage(HttpMethod.Post, "constituent/v1/constituents")
+                {
+                    Content = new StringContent(createJson, Encoding.UTF8, "application/json")
+                },
+                ct);
+
+            var createBody = await createResp.Content.ReadAsStringAsync(ct);
+            if (!createResp.IsSuccessStatusCode)
+                throw new InvalidOperationException(FormatSkyApiError("Create constituent", createResp.StatusCode, createBody));
+
+            var newId = ParseId(createBody);
+
+            // 2) Best-effort contact info.
+            var warnings = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                try { await CreateEmailAsync(newId, email!.Trim(), ct); }
+                catch (Exception ex) { warnings.Add("Email: " + ex.Message); }
+            }
+
+            var normalizedPhone = NormalizePhone(phone);
+            if (!string.IsNullOrWhiteSpace(normalizedPhone))
+            {
+                try { await CreatePhoneAsync(newId, normalizedPhone!, ct); }
+                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); }
+            }
+
+            if (!string.IsNullOrWhiteSpace(addressLine1) || !string.IsNullOrWhiteSpace(addressLine2))
+            {
+                try
+                {
+                    var lines = (addressLine1 ?? "").Trim();
+                    var line2 = (addressLine2 ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(line2))
+                        lines = string.IsNullOrWhiteSpace(lines) ? line2 : (lines + "\n" + line2);
+
+                    await CreateAddressAsync(
+                        newId,
+                        lines,
+                        (city ?? "").Trim(),
+                        (state ?? "").Trim(),
+                        (postalCode ?? "").Trim(),
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add("Address: " + ex.Message);
+                }
+            }
+
+            return new CreatedConstituent(newId, warnings);
+        }
+
+        private async Task CreateEmailAsync(int constituentId, string address, CancellationToken ct)
+        {
+            // Endpoint name inferred from Blackbaud community discussions about /constituent/v1/emailaddresses.
+            var payload = new Dictionary<string, object?>
+            {
+                ["constituent_id"] = constituentId.ToString(),
+                ["address"] = address,
+                ["type"] = "Email",
+                ["primary"] = true,
+                ["inactive"] = false
+            };
+
+            await PostAndEnsureAsync("constituent/v1/emailaddresses", payload, ct);
+        }
+
+        private async Task CreatePhoneAsync(int constituentId, string number, CancellationToken ct)
+        {
+            // The connectors docs list operations for creating phones on constituents.
+            var payload = new Dictionary<string, object?>
+            {
+                ["constituent_id"] = constituentId.ToString(),
+                ["type"] = "Home",
+                ["number"] = number,
+                ["primary"] = true,
+                ["do_not_call"] = false,
+                ["inactive"] = false
+            };
+
+            await PostAndEnsureAsync("constituent/v1/phones", payload, ct);
+        }
+
+        private async Task CreateAddressAsync(int constituentId, string addressLines, string city, string state, string postalCode, CancellationToken ct)
+        {
+            // PATCH examples confirm the addresses endpoint and common fields (address_lines, city, state, postal_code, type, preferred...).
+            var payload = new Dictionary<string, object?>
+            {
+                ["constituent_id"] = constituentId.ToString(),
+                ["type"] = "Home",
+                ["address_lines"] = addressLines,
+                ["city"] = city,
+                ["state"] = state,
+                ["postal_code"] = postalCode,
+                ["country"] = "United States",
+                ["preferred"] = true,
+                ["do_not_mail"] = false
+            };
+
+            await PostAndEnsureAsync("constituent/v1/addresses", payload, ct);
+        }
+
+        private async Task PostAndEnsureAsync(string relativeUrl, Dictionary<string, object?> payload, CancellationToken ct)
+        {
+            var json = JsonSerializer.Serialize(payload);
+
+            using var resp = await SendWithRetryAfterAsync(
+                () => new HttpRequestMessage(HttpMethod.Post, relativeUrl)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                },
+                ct);
+
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(FormatSkyApiError($"POST {relativeUrl}", resp.StatusCode, body));
+        }
+
+        private static int ParseId(string responseBody)
+        {
+            using var doc = JsonDocument.Parse(responseBody);
+            if (!doc.RootElement.TryGetProperty("id", out var idEl))
+                throw new FormatException("Create response did not include an id.");
+
+            var s = idEl.ValueKind switch
+            {
+                JsonValueKind.Number => idEl.ToString(),
+                JsonValueKind.String => idEl.GetString(),
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(s) || !int.TryParse(s, out var id))
+                throw new FormatException("Create response id was not numeric.");
+
+            return id;
+        }
+
+        private static string FormatSkyApiError(string operation, HttpStatusCode status, string body)
+        {
+            var message = ExtractSkyApiMessage(body);
+            var code = (int)status;
+            return string.IsNullOrWhiteSpace(message)
+                ? $"{operation} failed ({code})."
+                : $"{operation} failed ({code}): {message}";
+        }
+
+        private static string ExtractSkyApiMessage(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return "";
+
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+
+                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                {
+                    var first = root[0];
+                    if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
+                        return msg.GetString() ?? "";
+                }
+
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message", out var msgObj) && msgObj.ValueKind == JsonValueKind.String)
+                    return msgObj.GetString() ?? "";
+            }
+            catch
+            {
+                // Ignore parse errors and fall back to raw body.
+            }
+
+            body = body.Trim();
+            return body.Length <= 400 ? body : body.Substring(0, 400) + "…";
+        }
+
+        private static string? NormalizePhone(string? phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone)) return null;
+
+            var digits = DigitsOnly.Replace(phone, "");
+            if (digits.Length == 11 && digits.StartsWith("1"))
+                digits = digits.Substring(1);
+
+            if (digits.Length == 10)
+                return $"{digits.Substring(0, 3)}-{digits.Substring(3, 3)}-{digits.Substring(6, 4)}";
+
+            // If it isn't a standard US number, return trimmed input and let SKY validate.
+            return phone.Trim();
         }
 
         public async Task<IReadOnlyList<ConstituentGridRow>> SearchGridAsync(string rawInput, CancellationToken ct = default)
@@ -280,16 +506,18 @@ namespace CheerfulGiverNXT
                 zip = GetStringOrNumber(addr, "postal_code");
             }
 
-            // Primary contact (phone preferred, otherwise email)
+            // Preferred contact (phone, else email)
             var phone = "";
             if (root.TryGetProperty("phone", out var phoneObj) && phoneObj.ValueKind == JsonValueKind.Object)
-                phone = Normalize(GetStringOrNumber(phoneObj, "number"));
+                phone = GetStringOrNumber(phoneObj, "number");
 
             var email = "";
             if (root.TryGetProperty("email", out var emailObj) && emailObj.ValueKind == JsonValueKind.Object)
-                email = Normalize(GetStringOrNumber(emailObj, "address"));
+                email = GetStringOrNumber(emailObj, "address");
 
-            var contact = phone.IfBlank(email);
+            var contact = string.IsNullOrWhiteSpace(phone)
+                ? email
+                : (string.IsNullOrWhiteSpace(email) ? phone : $"{phone} / {email}");
 
             return new ConstituentGridRow(
                 Id: id,

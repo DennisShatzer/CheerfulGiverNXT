@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 
 namespace CheerfulGiverNXT
 {
@@ -10,6 +12,8 @@ namespace CheerfulGiverNXT
         public DraftConstituent Draft { get; }
 
         public string DraftDisplayName => Draft.DisplayName;
+
+        public int? CreatedConstituentId { get; private set; }
 
         public AddConstituentWindow(string? initialSearchText = null)
         {
@@ -36,18 +40,62 @@ namespace CheerfulGiverNXT
             Loaded += (_, __) => FirstNameTextBox.Focus();
         }
 
-        private void Save_Click(object sender, RoutedEventArgs e)
+        private async void Save_Click(object sender, RoutedEventArgs e)
         {
-            // Minimal validation: need something name-like.
-            if (string.IsNullOrWhiteSpace(Draft.FirstName) && string.IsNullOrWhiteSpace(Draft.LastName))
+            // Minimal validation: SKY requires a last name for Individuals.
+            if (string.IsNullOrWhiteSpace(Draft.LastName))
             {
-                MessageBox.Show("Please enter at least a first or last name.", "Missing name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Please enter a last name.", "Missing name", MessageBoxButton.OK, MessageBoxImage.Warning);
                 FirstNameTextBox.Focus();
                 return;
             }
 
-            DialogResult = true;
-            Close();
+            SaveButton.IsEnabled = false;
+            CancelButton.IsEnabled = false;
+            Mouse.OverrideCursor = Cursors.Wait;
+
+            try
+            {
+                var created = await App.ConstituentService.CreateIndividualConstituentAsync(
+                    Draft.FirstName,
+                    Draft.LastName,
+                    Draft.Email,
+                    Draft.Phone,
+                    Draft.AddressLine1,
+                    Draft.AddressLine2,
+                    Draft.City,
+                    Draft.State,
+                    Draft.PostalCode);
+
+                CreatedConstituentId = created.Id;
+
+                if (created.Warnings.Count > 0)
+                {
+                    MessageBox.Show(
+                        $"Created constituent ID {created.Id}.\n\nHowever, some contact details could not be saved:\n\n- " +
+                        string.Join("\n- ", created.Warnings),
+                        "Created with warnings",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+
+                DialogResult = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Unable to create the constituent:\n\n" + ex.Message,
+                    "Create failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                SaveButton.IsEnabled = true;
+                CancelButton.IsEnabled = true;
+            }
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)

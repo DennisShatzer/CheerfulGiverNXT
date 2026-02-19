@@ -17,7 +17,7 @@
             <StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="Draft new constituent"/>
                 <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                    Enter details below. This window currently captures a draft (wiring to SKY API create can be added next).
+                    Enter details below. Clicking Save will create the constituent in Raiser’s Edge NXT via SKY API.
                 </TextBlock>
             </StackPanel>
         </Border>

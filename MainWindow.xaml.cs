@@ -25,7 +25,7 @@ namespace CheerfulGiverNXT
             DataContext = vm;
 
             vm.AddConstituentRequested += Vm_AddConstituentRequested;
-            // Populate the read-only auth preview fields before the operator does anything.
+
             Loaded += async (_, __) =>
             {
                 // Put the cursor in the search box when the window opens.
@@ -36,6 +36,7 @@ namespace CheerfulGiverNXT
                     SearchTextBox.SelectAll();
                 }, DispatcherPriority.Input);
 
+                // Populate the read-only auth preview fields before the operator does anything.
                 await vm.RefreshAuthPreviewAsync();
             };
 
@@ -60,13 +61,7 @@ namespace CheerfulGiverNXT
 
             if (result != MessageBoxResult.Yes)
             {
-                _ = Dispatcher.InvokeAsync(() =>
-                {
-                    SearchTextBox.Focus();
-                    Keyboard.Focus(SearchTextBox);
-                    SearchTextBox.SelectAll();
-                }, DispatcherPriority.Input);
-
+                RefocusSearch();
                 return;
             }
 
@@ -77,9 +72,24 @@ namespace CheerfulGiverNXT
 
             var ok = win.ShowDialog() == true;
 
-            if (ok && DataContext is ConstituentLookupTestViewModel vm && !string.IsNullOrWhiteSpace(win.DraftDisplayName))
-                vm.StatusText =  "New constituent draft: {win.DraftDisplayName} (not yet saved).";
+            if (ok && DataContext is ConstituentLookupTestViewModel vm)
+            {
+                if (win.CreatedConstituentId is int id)
+                    vm.StatusText = $"Created constituent {win.DraftDisplayName} (ID {id}).";
+                else
+                    vm.StatusText = $"Created constituent {win.DraftDisplayName}.";
 
+                // Helpful default: populate the search box with the new name and run a search.
+                vm.SearchText = win.DraftDisplayName;
+                if (vm.SearchCommand.CanExecute(null))
+                    vm.SearchCommand.Execute(null);
+            }
+
+            RefocusSearch();
+        }
+
+        private void RefocusSearch()
+        {
             _ = Dispatcher.InvokeAsync(() =>
             {
                 SearchTextBox.Focus();
@@ -109,15 +119,11 @@ namespace CheerfulGiverNXT
             {
                 Mouse.OverrideCursor = Cursors.Wait;
 
-                // OPTION A (recommended): expose the service from the VM
-                // e.g. vm.Api or vm.LookupService (see below)
                 var funds = await vm.LookupService.GetContributedFundsAsync(
                     vm.SelectedRow.Id,
                     maxGiftsToScan: 500);
 
-                // For now you can just pass funds along (after you add a ctor overload),
-                // or even just display them as a quick proof:
-                // MessageBox.Show(string.Join(Environment.NewLine, funds.Select(f => $"{f.Id} - {f.Name}")));
+                _ = funds; // placeholder until gift entry uses these
 
                 var w = new GiftWindow(vm.SelectedRow /*, funds */);
                 w.Owner = this;
@@ -215,7 +221,6 @@ namespace CheerfulGiverNXT
                 };
 
                 if (expSeconds <= 0) return null;
-
                 return DateTimeOffset.FromUnixTimeSeconds(expSeconds);
             }
             catch
