@@ -216,6 +216,12 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
                 return;
             }
 
+            // If we need to prompt to add a new constituent, do it *after* the search completes
+            // and the busy indicator has been cleared. Otherwise the progress bar stays active
+            // while the operator is in the add flow.
+            bool requestAddConstituent = false;
+            string requestAddSearchText = text;
+
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = new CancellationTokenSource();
@@ -245,7 +251,8 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
                     if (_noMatchStreak >= NoMatchPromptThreshold)
                     {
                         _noMatchStreak = 0;
-                        AddConstituentRequested?.Invoke(this, new AddConstituentRequestedEventArgs(text));
+                        requestAddConstituent = true;
+                        requestAddSearchText = text;
                     }
                 }
                 else
@@ -272,6 +279,11 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             {
                 IsBusy = false;
                 SearchCommand.RaiseCanExecuteChanged();
+            }
+
+            if (requestAddConstituent)
+            {
+                AddConstituentRequested?.Invoke(this, new AddConstituentRequestedEventArgs(requestAddSearchText));
             }
         }
 
