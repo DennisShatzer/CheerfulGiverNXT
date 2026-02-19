@@ -25,6 +25,8 @@ namespace CheerfulGiverNXT
             // Simple prefill: split "First Last" (best effort).
             if (!string.IsNullOrWhiteSpace(initialSearchText))
             {
+                Draft.OrganizationName = initialSearchText.Trim();
+
                 var parts = initialSearchText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 1)
                 {
@@ -37,17 +39,48 @@ namespace CheerfulGiverNXT
                 }
             }
 
-            Loaded += (_, __) => FirstNameTextBox.Focus();
+            Loaded += (_, __) => FocusNameField();
+        }
+
+        private void ConstituentType_Checked(object sender, RoutedEventArgs e)
+        {
+            // Keep this simple and operator-friendly.
+            FocusNameField();
+        }
+
+        private void FocusNameField()
+        {
+            if (Draft.IsOrganization)
+            {
+                OrganizationNameTextBox?.Focus();
+            }
+            else
+            {
+                FirstNameTextBox?.Focus();
+            }
         }
 
         private async void Save_Click(object sender, RoutedEventArgs e)
         {
-            // Minimal validation: SKY requires a last name for Individuals.
-            if (string.IsNullOrWhiteSpace(Draft.LastName))
+            // Minimal validation.
+            if (Draft.IsOrganization)
             {
-                MessageBox.Show("Please enter a last name.", "Missing name", MessageBoxButton.OK, MessageBoxImage.Warning);
-                FirstNameTextBox.Focus();
-                return;
+                if (string.IsNullOrWhiteSpace(Draft.OrganizationName))
+                {
+                    MessageBox.Show("Please enter an organization name.", "Missing name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    OrganizationNameTextBox.Focus();
+                    return;
+                }
+            }
+            else
+            {
+                // SKY requires a last name for Individuals.
+                if (string.IsNullOrWhiteSpace(Draft.LastName))
+                {
+                    MessageBox.Show("Please enter a last name.", "Missing name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    LastNameTextBox.Focus();
+                    return;
+                }
             }
 
             SaveButton.IsEnabled = false;
@@ -56,16 +89,26 @@ namespace CheerfulGiverNXT
 
             try
             {
-                var created = await App.ConstituentService.CreateIndividualConstituentAsync(
-                    Draft.FirstName,
-                    Draft.LastName,
-                    Draft.Email,
-                    Draft.Phone,
-                    Draft.AddressLine1,
-                    Draft.AddressLine2,
-                    Draft.City,
-                    Draft.State,
-                    Draft.PostalCode);
+                var created = Draft.IsOrganization
+                    ? await App.ConstituentService.CreateOrganizationConstituentAsync(
+                        Draft.OrganizationName,
+                        Draft.Email,
+                        Draft.Phone,
+                        Draft.AddressLine1,
+                        Draft.AddressLine2,
+                        Draft.City,
+                        Draft.State,
+                        Draft.PostalCode)
+                    : await App.ConstituentService.CreateIndividualConstituentAsync(
+                        Draft.FirstName,
+                        Draft.LastName,
+                        Draft.Email,
+                        Draft.Phone,
+                        Draft.AddressLine1,
+                        Draft.AddressLine2,
+                        Draft.City,
+                        Draft.State,
+                        Draft.PostalCode);
 
                 CreatedConstituentId = created.Id;
 
@@ -106,6 +149,45 @@ namespace CheerfulGiverNXT
 
         public sealed class DraftConstituent : INotifyPropertyChanged
         {
+            public enum ConstituentKind
+            {
+                Individual,
+                Organization
+            }
+
+            private ConstituentKind _kind = ConstituentKind.Individual;
+            public ConstituentKind Kind
+            {
+                get => _kind;
+                set
+                {
+                    if (_kind == value) return;
+                    _kind = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsIndividual));
+                    OnPropertyChanged(nameof(IsOrganization));
+                    OnPropertyChanged(nameof(DisplayName));
+                }
+            }
+
+            public bool IsIndividual
+            {
+                get => Kind == ConstituentKind.Individual;
+                set
+                {
+                    if (value) Kind = ConstituentKind.Individual;
+                }
+            }
+
+            public bool IsOrganization
+            {
+                get => Kind == ConstituentKind.Organization;
+                set
+                {
+                    if (value) Kind = ConstituentKind.Organization;
+                }
+            }
+
             private string _firstName = "";
             public string FirstName
             {
@@ -118,6 +200,13 @@ namespace CheerfulGiverNXT
             {
                 get => _lastName;
                 set { _lastName = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayName)); }
+            }
+
+            private string _organizationName = "";
+            public string OrganizationName
+            {
+                get => _organizationName;
+                set { _organizationName = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayName)); }
             }
 
             private string _email = "";
@@ -180,7 +269,10 @@ namespace CheerfulGiverNXT
             {
                 get
                 {
-                    var full = ($"{FirstName} {LastName}").Trim();
+                    var full = IsOrganization
+                        ? (OrganizationName ?? "").Trim()
+                        : ($"{FirstName} {LastName}").Trim();
+
                     return string.IsNullOrWhiteSpace(full) ? "(no name)" : full;
                 }
             }

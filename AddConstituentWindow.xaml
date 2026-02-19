@@ -6,6 +6,10 @@
         Width="560"
         WindowStartupLocation="CenterOwner">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -38,20 +42,40 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Name"/>
-            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-                <TextBox x:Name="FirstNameTextBox" Width="170" Margin="0,0,8,8" Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBox Width="240" Margin="0,0,0,8" Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}"/>
-            </StackPanel>
+	            <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Type"/>
+	            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+	                <RadioButton Content="Individual"
+	                             Margin="0,0,16,8"
+	                             VerticalAlignment="Center"
+	                             IsChecked="{Binding IsIndividual, Mode=TwoWay}"
+	                             Checked="ConstituentType_Checked"/>
+	                <RadioButton Content="Organization"
+	                             Margin="0,0,0,8"
+	                             VerticalAlignment="Center"
+	                             IsChecked="{Binding IsOrganization, Mode=TwoWay}"
+	                             Checked="ConstituentType_Checked"/>
+	            </StackPanel>
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Email"/>
-            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}"/>
+	            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Name"/>
+	            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Visibility="{Binding IsIndividual, Converter={StaticResource BoolToVis}}">
+	                <TextBox x:Name="FirstNameTextBox" Width="170" Margin="0,0,8,8" Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}"/>
+	                <TextBox x:Name="LastNameTextBox" Width="240" Margin="0,0,0,8" Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}"/>
+	            </StackPanel>
+	            <TextBox x:Name="OrganizationNameTextBox"
+	                     Grid.Row="1"
+	                     Grid.Column="1"
+	                     Margin="0,0,0,8"
+	                     Text="{Binding OrganizationName, UpdateSourceTrigger=PropertyChanged}"
+	                     Visibility="{Binding IsOrganization, Converter={StaticResource BoolToVis}}"/>
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Phone"/>
-            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"/>
+	            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Email"/>
+	            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}"/>
 
-            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Top" Text="Address"/>
-            <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,8">
+	            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Phone"/>
+	            <TextBox Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"/>
+
+	            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Top" Text="Address"/>
+	            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,8">
                 <TextBox Margin="0,0,0,6" Text="{Binding AddressLine1, UpdateSourceTrigger=PropertyChanged}"/>
                 <TextBox Margin="0,0,0,6" Text="{Binding AddressLine2, UpdateSourceTrigger=PropertyChanged}"/>
                 <StackPanel Orientation="Horizontal">
@@ -61,11 +85,11 @@
                 </StackPanel>
             </StackPanel>
 
-            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Notes"/>
-            <TextBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"/>
+	            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Notes"/>
+	            <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"/>
 
-            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center" Text="Display"/>
-            <TextBlock Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Text="{Binding DisplayName}" FontStyle="Italic"/>
+	            <TextBlock Grid.Row="6" Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center" Text="Display"/>
+	            <TextBlock Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Text="{Binding DisplayName}" FontStyle="Italic"/>
         </Grid>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

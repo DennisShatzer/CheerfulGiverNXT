@@ -108,7 +108,7 @@ namespace CheerfulGiverNXT
             var normalizedPhone = NormalizePhone(phone);
             if (!string.IsNullOrWhiteSpace(normalizedPhone))
             {
-                try { await CreatePhoneAsync(newId, normalizedPhone!, ct); }
+                try { await CreatePhoneAsync(newId, normalizedPhone!, "Home", ct); }
                 catch (Exception ex) { warnings.Add("Phone: " + ex.Message); }
             }
 
@@ -127,6 +127,92 @@ namespace CheerfulGiverNXT
                         (city ?? "").Trim(),
                         (state ?? "").Trim(),
                         (postalCode ?? "").Trim(),
+                        "Home",
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add("Address: " + ex.Message);
+                }
+            }
+
+            return new CreatedConstituent(newId, warnings);
+        }
+
+        /// <summary>
+        /// Creates an Organization constituent. Creates the constituent first, then attempts to add email/phone/address.
+        /// Returns the created constituent id and any non-fatal warnings (e.g., contact info couldn't be added).
+        /// </summary>
+        public async Task<CreatedConstituent> CreateOrganizationConstituentAsync(
+            string name,
+            string? email,
+            string? phone,
+            string? addressLine1,
+            string? addressLine2,
+            string? city,
+            string? state,
+            string? postalCode,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Organization name is required.", nameof(name));
+
+            // 1) Create the constituent.
+            var createPayload = new Dictionary<string, object?>
+            {
+                ["type"] = "Organization",
+                ["name"] = name.Trim()
+            };
+
+            var createJson = JsonSerializer.Serialize(createPayload);
+
+            using var createResp = await SendWithRetryAfterAsync(
+                () => new HttpRequestMessage(HttpMethod.Post, "constituent/v1/constituents")
+                {
+                    Content = new StringContent(createJson, Encoding.UTF8, "application/json")
+                },
+                ct);
+
+            var createBody = await createResp.Content.ReadAsStringAsync(ct);
+            if (!createResp.IsSuccessStatusCode)
+                throw new InvalidOperationException(FormatSkyApiError("Create constituent", createResp.StatusCode, createBody));
+
+            var newId = ParseId(createBody);
+
+            // 2) Best-effort contact info.
+            var warnings = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                try { await CreateEmailAsync(newId, email!.Trim(), ct); }
+                catch (Exception ex) { warnings.Add("Email: " + ex.Message); }
+            }
+
+            var normalizedPhone = NormalizePhone(phone);
+            if (!string.IsNullOrWhiteSpace(normalizedPhone))
+            {
+                // "Work" and "Business" are common defaults for orgs; if your instance uses different table values,
+                // the call may fail and you'll see a warning (but the organization will still be created).
+                try { await CreatePhoneAsync(newId, normalizedPhone!, "Work", ct); }
+                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); }
+            }
+
+            if (!string.IsNullOrWhiteSpace(addressLine1) || !string.IsNullOrWhiteSpace(addressLine2))
+            {
+                try
+                {
+                    var lines = (addressLine1 ?? "").Trim();
+                    var line2 = (addressLine2 ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(line2))
+                        lines = string.IsNullOrWhiteSpace(lines) ? line2 : (lines + "\n" + line2);
+
+                    await CreateAddressAsync(
+                        newId,
+                        lines,
+                        (city ?? "").Trim(),
+                        (state ?? "").Trim(),
+                        (postalCode ?? "").Trim(),
+                        "Business",
                         ct);
                 }
                 catch (Exception ex)
@@ -153,13 +239,13 @@ namespace CheerfulGiverNXT
             await PostAndEnsureAsync("constituent/v1/emailaddresses", payload, ct);
         }
 
-        private async Task CreatePhoneAsync(int constituentId, string number, CancellationToken ct)
+        private async Task CreatePhoneAsync(int constituentId, string number, string phoneType, CancellationToken ct)
         {
             // The connectors docs list operations for creating phones on constituents.
             var payload = new Dictionary<string, object?>
             {
                 ["constituent_id"] = constituentId.ToString(),
-                ["type"] = "Home",
+                ["type"] = phoneType,
                 ["number"] = number,
                 ["primary"] = true,
                 ["do_not_call"] = false,
@@ -169,13 +255,13 @@ namespace CheerfulGiverNXT
             await PostAndEnsureAsync("constituent/v1/phones", payload, ct);
         }
 
-        private async Task CreateAddressAsync(int constituentId, string addressLines, string city, string state, string postalCode, CancellationToken ct)
+        private async Task CreateAddressAsync(int constituentId, string addressLines, string city, string state, string postalCode, string addressType, CancellationToken ct)
         {
             // PATCH examples confirm the addresses endpoint and common fields (address_lines, city, state, postal_code, type, preferred...).
             var payload = new Dictionary<string, object?>
             {
                 ["constituent_id"] = constituentId.ToString(),
-                ["type"] = "Home",
+                ["type"] = addressType,
                 ["address_lines"] = addressLines,
                 ["city"] = city,
                 ["state"] = state,
