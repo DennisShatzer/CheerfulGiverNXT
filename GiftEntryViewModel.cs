@@ -1,27 +1,9 @@
 // GiftEntryViewModel.cs
-// Pledge entry screen VM (pledge commitments only) with a friendly “One-time (single installment)” option.
-// Sponsorship selector options (shown when Amount qualifies) are read from App.config.
-//
-// App.config examples:
-//
-// Option A (recommended single key):
-//   <add key="SponsorshipOptions" value="Half-day AM=1000;Half-day PM=1000;Full day=2000" />
-//
-// Option B (individual keys with a prefix):
-//   <add key="Sponsorship:Half-day AM" value="1000" />
-//   <add key="Sponsorship:Half-day PM" value="1000" />
-//   <add key="Sponsorship:Full day" value="2000" />
-//
-// Option C (keys are the display names; values are amounts):
-//   <add key="Half-day AM" value="1000" />
-//   <add key="Half-day PM" value="1000" />
-//   <add key="Full day" value="2000" />
-//
-// Requires RenxtGiftServer.cs and AsyncRelayCommand.cs in the same project/namespace.
+// Pledge entry screen VM (pledge commitments only) with a friendly “One-time” option.
+// Hidden fields (fund/campaign/appeal/package/installments/start-date/reminder) remain in the VM for processing.
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Configuration;
 using System.Globalization;
@@ -42,22 +24,17 @@ namespace CheerfulGiverNXT
             bool LockStartDateToPledgeDate
         );
 
-        public sealed record SponsorshipOption(string Display, decimal RequiredAmount)
-        {
-            public override string ToString() => Display;
-        }
-
-        private static readonly SponsorshipOption[] ConfiguredSponsorshipOptions = LoadSponsorshipOptionsFromConfig();
+        public sealed record SponsorshipOption(string Display, decimal ThresholdAmount);
 
         public FrequencyPreset[] FrequencyPresets { get; } =
         {
-            // “One-time donation” UX: still uses Monthly in API (frequency value is required),
+            // “One-time” UX: still uses Monthly in API (frequency value is required),
             // but forces number_of_installments = 1 and start_date = pledge_date.
-            new("One-time (single installment)", PledgeFrequency.Monthly, 1,  true,  true),
-            new("Monthly",                       PledgeFrequency.Monthly, 12, false, false),
-            new("Quarterly",                     PledgeFrequency.Quarterly, 4,  false, false),
-            new("Annually",                      PledgeFrequency.Annually, 1,  false, false),
-            new("Weekly",                        PledgeFrequency.Weekly,  4,  false, false),
+            new("One-time",  PledgeFrequency.Monthly,   1,  true,  true),
+            new("Monthly",   PledgeFrequency.Monthly,  12,  false, false),
+            new("Quarterly", PledgeFrequency.Quarterly, 4,  false, false),
+            new("Annually",  PledgeFrequency.Annually,  1,  false, false),
+            new("Weekly",    PledgeFrequency.Weekly,    4,  false, false),
         };
 
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
@@ -73,7 +50,8 @@ namespace CheerfulGiverNXT
         {
             get
             {
-                var line1 = $"ID: {_row.Id}   Spouse: {_row.Spouse}".TrimEnd();
+                var spouse = string.IsNullOrWhiteSpace(_row.Spouse) ? "" : _row.Spouse.Trim();
+                var line1 = $"ID: {_row.Id}" + (string.IsNullOrWhiteSpace(spouse) ? "" : $"   Spouse: {spouse}");
 
                 var street = (_row.Street ?? "").Trim();
                 var city = (_row.City ?? "").Trim();
@@ -81,32 +59,14 @@ namespace CheerfulGiverNXT
                 var zip = (_row.Zip ?? "").Trim();
 
                 var line2 = street;
-
-                // Prefer "City, ST ZIP" formatting.
-                var parts = new List<string>();
-                if (!string.IsNullOrWhiteSpace(city)) parts.Add(city.TrimEnd(','));
-                if (!string.IsNullOrWhiteSpace(state)) parts.Add(state);
-                if (!string.IsNullOrWhiteSpace(zip)) parts.Add(zip);
-
-                var line3 = "";
-                if (parts.Count > 0)
+                var line3 = string.Join(" ", new[]
                 {
-                    if (parts.Count >= 2)
-                        line3 = $"{parts[0]}, {string.Join(" ", parts.Skip(1))}";
-                    else
-                        line3 = parts[0];
-                }
+                    string.Join(", ", new[] { city, state }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                    zip
+                }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
 
-                if (string.IsNullOrWhiteSpace(line2) && string.IsNullOrWhiteSpace(line3))
-                    return line1;
-
-                if (string.IsNullOrWhiteSpace(line2))
-                    return $"{line1}\n{line3}";
-
-                if (string.IsNullOrWhiteSpace(line3))
-                    return $"{line1}\n{line2}";
-
-                return $"{line1}\n{line2}\n{line3}";
+                // Keep blank lines out if something is missing.
+                return string.Join("\n", new[] { line1, line2, line3 }.Where(s => !string.IsNullOrWhiteSpace(s)));
             }
         }
 
@@ -116,9 +76,10 @@ namespace CheerfulGiverNXT
             get => _amountText;
             set
             {
+                if (_amountText == value) return;
                 _amountText = value;
                 OnPropertyChanged();
-                UpdateSponsorshipEligibility();
+                RefreshSponsorshipEligibility();
                 RefreshCanSave();
             }
         }
@@ -142,7 +103,8 @@ namespace CheerfulGiverNXT
             }
         }
 
-        private DateTime? _firstInstallmentDate = DateTime.Today.AddMonths(1);
+        // Keep a sane default: start date = pledge date initially.
+        private DateTime? _firstInstallmentDate = DateTime.Today;
         public DateTime? FirstInstallmentDate
         {
             get => _firstInstallmentDate;
@@ -172,7 +134,7 @@ namespace CheerfulGiverNXT
             private set { _frequency = value; OnPropertyChanged(); }
         }
 
-        private string _numberOfInstallmentsText = "12";
+        private string _numberOfInstallmentsText = "1";
         public string NumberOfInstallmentsText
         {
             get => _numberOfInstallmentsText;
@@ -215,7 +177,7 @@ namespace CheerfulGiverNXT
             }
         }
 
-        // These are kept "behind the scenes" for processing even if the UI hides them.
+        // Hidden, but still used by SaveAsync
         private string _fundIdText = "86";
         public string FundIdText
         {
@@ -251,8 +213,29 @@ namespace CheerfulGiverNXT
             set { _sendReminder = value; OnPropertyChanged(); }
         }
 
-        // Sponsorship selector (shown only when Amount qualifies)
-        public ObservableCollection<SponsorshipOption> EligibleSponsorshipOptions { get; } = new();
+        private string _comments = "";
+        public string Comments
+        {
+            get => _comments;
+            set { _comments = value; OnPropertyChanged(); }
+        }
+
+        // Sponsorship eligibility (driven by AmountText + App.config)
+        private readonly SponsorshipOption[] _allSponsorshipOptions;
+        private SponsorshipOption[] _eligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
+
+        public SponsorshipOption[] EligibleSponsorshipOptions
+        {
+            get => _eligibleSponsorshipOptions;
+            private set
+            {
+                _eligibleSponsorshipOptions = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowSponsorshipSelector));
+            }
+        }
+
+        public bool ShowSponsorshipSelector => EligibleSponsorshipOptions.Length > 0;
 
         private SponsorshipOption? _selectedSponsorshipOption;
         public SponsorshipOption? SelectedSponsorshipOption
@@ -261,14 +244,21 @@ namespace CheerfulGiverNXT
             set { _selectedSponsorshipOption = value; OnPropertyChanged(); }
         }
 
-        public bool ShowSponsorshipSelector => EligibleSponsorshipOptions.Count > 0;
-
-        private string _comments = "";
-        public string Comments
+        private DateTime? _sponsorshipDate;
+        /// <summary>
+        /// The date the constituent wants to sponsor. Only used/shown when Sponsorship is eligible.
+        /// </summary>
+        public DateTime? SponsorshipDate
         {
-            get => _comments;
-            set { _comments = value; OnPropertyChanged(); }
+            get => _sponsorshipDate;
+            set
+            {
+                if (_sponsorshipDate == value) return;
+                _sponsorshipDate = value;
+                OnPropertyChanged();
+            }
         }
+
 
         private string _statusText = "Ready.";
         public string StatusText
@@ -288,76 +278,139 @@ namespace CheerfulGiverNXT
         public bool CanSave
         {
             get => _canSave;
-            private set { _canSave = value; OnPropertyChanged(); SaveCommand.RaiseCanExecuteChanged(); }
+            private set
+            {
+                if (_canSave == value) return;
+                _canSave = value;
+                OnPropertyChanged();
+                // During construction SaveCommand may not be initialized yet.
+                _saveCommand?.RaiseCanExecuteChanged();
+            }
         }
 
-        public AsyncRelayCommand SaveCommand { get; }
+        // Backing field is required because CanSave may change during construction
+        // before the command is created.
+        private AsyncRelayCommand? _saveCommand;
+        public AsyncRelayCommand SaveCommand => _saveCommand ??= new AsyncRelayCommand(SaveAsync, () => CanSave);
 
         public GiftEntryViewModel(RenxtConstituentLookupService.ConstituentGridRow row, RenxtGiftServer giftServer)
         {
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
 
-            // Default to One-time as requested.
+            _allSponsorshipOptions = LoadSponsorshipOptions();
+
+            // Default to One-time.
             _selectedPreset = FrequencyPresets[0];
             Frequency = _selectedPreset.ApiFrequency;
             IsInstallmentsLocked = _selectedPreset.LockInstallments;
             IsStartDateLockedToPledgeDate = _selectedPreset.LockStartDateToPledgeDate;
-
-            SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
-
             NumberOfInstallmentsText = _selectedPreset.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
 
-            // If One-time locks start date to pledge date, keep them in sync on startup.
             if (IsStartDateLockedToPledgeDate && PledgeDate.HasValue)
                 FirstInstallmentDate = PledgeDate.Value.Date;
 
-            UpdateSponsorshipEligibility();
+            // Create command after defaults are applied.
+            _saveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
+
+            RefreshSponsorshipEligibility();
             RefreshCanSave();
         }
 
-        private void UpdateSponsorshipEligibility()
+        private void RefreshSponsorshipEligibility()
         {
-            EligibleSponsorshipOptions.Clear();
-
-            if (ConfiguredSponsorshipOptions.Length == 0)
+            if (_allSponsorshipOptions.Length == 0)
             {
-                if (SelectedSponsorshipOption is not null)
-                    SelectedSponsorshipOption = null;
-
-                OnPropertyChanged(nameof(ShowSponsorshipSelector));
+                EligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
+                SelectedSponsorshipOption = null;
+                SponsorshipDate = null;
                 return;
             }
 
-            if (!TryParseAmount(out var amount) || amount <= 0m)
+            if (!TryParseAmount(out var amt) || amt <= 0m)
             {
-                if (SelectedSponsorshipOption is not null)
-                    SelectedSponsorshipOption = null;
-
-                OnPropertyChanged(nameof(ShowSponsorshipSelector));
+                EligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
+                SelectedSponsorshipOption = null;
+                SponsorshipDate = null;
                 return;
             }
 
-            var eligible = ConfiguredSponsorshipOptions
-                .Where(o => amount >= o.RequiredAmount)
-                .OrderBy(o => o.RequiredAmount)
+            // Qualify when amount meets or exceeds the configured threshold.
+            var eligible = _allSponsorshipOptions
+                .Where(o => amt >= o.ThresholdAmount)
+                .OrderBy(o => o.ThresholdAmount)
                 .ThenBy(o => o.Display, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                .ToArray();
 
-            foreach (var opt in eligible)
-                EligibleSponsorshipOptions.Add(opt);
+            EligibleSponsorshipOptions = eligible;
 
-            if (EligibleSponsorshipOptions.Count == 0)
+            if (eligible.Length == 0)
             {
                 SelectedSponsorshipOption = null;
-            }
-            else
-            {
-                if (SelectedSponsorshipOption is null || !EligibleSponsorshipOptions.Contains(SelectedSponsorshipOption))
-                    SelectedSponsorshipOption = EligibleSponsorshipOptions[0];
+                SponsorshipDate = null;
+                return;
             }
 
-            OnPropertyChanged(nameof(ShowSponsorshipSelector));
+            // Keep selection if still eligible, else default to first eligible.
+            if (_selectedSponsorshipOption is null || !eligible.Any(x => x.Display == _selectedSponsorshipOption.Display && x.ThresholdAmount == _selectedSponsorshipOption.ThresholdAmount))
+                SelectedSponsorshipOption = eligible[0];
+
+            // If sponsorship becomes eligible and no date has been chosen yet, default to today.
+            if (SponsorshipDate is null)
+                SponsorshipDate = DateTime.Today;
+        }
+
+        private static SponsorshipOption[] LoadSponsorshipOptions()
+        {
+            // Preferred:
+            // <add key="SponsorshipOptions" value="Half-day AM=1000;Half-day PM=1000;Full day=2000" />
+            var raw = (ConfigurationManager.AppSettings["SponsorshipOptions"] ?? "").Trim();
+            var list = new List<SponsorshipOption>();
+
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                foreach (var part in raw.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var kv = part.Split(new[] { '=' }, 2);
+                    if (kv.Length != 2) continue;
+
+                    var name = (kv[0] ?? "").Trim();
+                    var amountText = (kv[1] ?? "").Trim();
+
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    if (!decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out var threshold)) continue;
+                    if (threshold <= 0m) continue;
+
+                    list.Add(new SponsorshipOption(name, threshold));
+                }
+            }
+
+            // Alternate format:
+            // <add key="Sponsorship:Half-day AM" value="1000" />
+            // <add key="Sponsorship:Full day" value="2000" />
+            if (list.Count == 0)
+            {
+                foreach (var key in ConfigurationManager.AppSettings.AllKeys ?? Array.Empty<string>())
+                {
+                    if (key is null) continue;
+                    if (!key.StartsWith("Sponsorship:", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var name = key.Substring("Sponsorship:".Length).Trim();
+                    var amountText = (ConfigurationManager.AppSettings[key] ?? "").Trim();
+
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    if (!decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out var threshold)) continue;
+                    if (threshold <= 0m) continue;
+
+                    list.Add(new SponsorshipOption(name, threshold));
+                }
+            }
+
+            // De-dup by name+threshold
+            return list
+                .GroupBy(o => (Name: o.Display.Trim(), o.ThresholdAmount))
+                .Select(g => g.First())
+                .ToArray();
         }
 
         private void RefreshCanSave()
@@ -436,112 +489,7 @@ namespace CheerfulGiverNXT
             }
         }
 
-        private static SponsorshipOption[] LoadSponsorshipOptionsFromConfig()
-        {
-            try
-            {
-                var list = new List<SponsorshipOption>();
-
-                void Add(string display, decimal amt)
-                {
-                    if (string.IsNullOrWhiteSpace(display)) return;
-                    if (amt <= 0m) return;
-
-                    list.Add(new SponsorshipOption(display.Trim(), amt));
-                }
-
-                // 1) Packed list: SponsorshipOptions="Half-day AM=1000;Half-day PM=1000;Full day=2000"
-                var packed = (ConfigurationManager.AppSettings["SponsorshipOptions"] ?? "").Trim();
-                if (!string.IsNullOrWhiteSpace(packed))
-                {
-                    foreach (var part in packed.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        var kv = part.Split(new[] { '=' }, 2);
-                        if (kv.Length != 2) continue;
-
-                        var name = kv[0].Trim();
-                        var val = kv[1].Trim();
-
-                        if (decimal.TryParse(val, NumberStyles.Number, CultureInfo.InvariantCulture, out var amt) ||
-                            decimal.TryParse(val, NumberStyles.Number, CultureInfo.CurrentCulture, out amt))
-                        {
-                            Add(name, amt);
-                        }
-                    }
-
-                    return list.DistinctBy(o => (o.Display, o.RequiredAmount)).ToArray();
-                }
-
-                // 2) Prefixed keys: Sponsorship:Half-day AM=1000
-                foreach (var key in ConfigurationManager.AppSettings.AllKeys)
-                {
-                    if (string.IsNullOrWhiteSpace(key)) continue;
-
-                    var val = ConfigurationManager.AppSettings[key];
-                    if (string.IsNullOrWhiteSpace(val)) continue;
-
-                    string? display = null;
-
-                    if (key.StartsWith("Sponsorship:", StringComparison.OrdinalIgnoreCase))
-                        display = key.Substring("Sponsorship:".Length);
-                    else if (key.StartsWith("Sponsorship.", StringComparison.OrdinalIgnoreCase))
-                        display = key.Substring("Sponsorship.".Length);
-                    else if (key.StartsWith("Sponsorship_", StringComparison.OrdinalIgnoreCase))
-                        display = key.Substring("Sponsorship_".Length);
-
-                    if (display is null) continue;
-
-                    if (decimal.TryParse(val.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var amt) ||
-                        decimal.TryParse(val.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out amt))
-                    {
-                        Add(display, amt);
-                    }
-                }
-
-                if (list.Count > 0)
-                    return list.DistinctBy(o => (o.Display, o.RequiredAmount)).ToArray();
-
-                // 3) Fallback: treat keys as display names if value parses as a number.
-                foreach (var key in ConfigurationManager.AppSettings.AllKeys)
-                {
-                    if (string.IsNullOrWhiteSpace(key)) continue;
-                    var val = ConfigurationManager.AppSettings[key];
-                    if (string.IsNullOrWhiteSpace(val)) continue;
-
-                    // Don't accidentally treat known non-option keys as options.
-                    if (key.Equals("RadioFunds", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (key.Equals("SubscriptionKey", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    if (decimal.TryParse(val.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var amt) ||
-                        decimal.TryParse(val.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out amt))
-                    {
-                        Add(key, amt);
-                    }
-                }
-
-                return list.DistinctBy(o => (o.Display, o.RequiredAmount)).ToArray();
-            }
-            catch
-            {
-                return Array.Empty<SponsorshipOption>();
-            }
-        }
-
         private void OnPropertyChanged([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    }
-
-    internal static class LinqCompatExtensions
-    {
-        // .NET 6+ has DistinctBy in LINQ; if you're on older, this keeps things compiling.
-        public static IEnumerable<TSource> DistinctBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector)
-        {
-            var seen = new HashSet<TKey>();
-            foreach (var item in source)
-            {
-                if (seen.Add(keySelector(item)))
-                    yield return item;
-            }
-        }
     }
 }

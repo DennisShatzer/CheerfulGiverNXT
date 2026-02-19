@@ -24,15 +24,12 @@ namespace CheerfulGiverNXT
             string? LookupId = null
         );
 
-        /// <summary>
-        /// Fund reference (ID + display name/description).
-        /// </summary>
         public record FundRef(int Id, string Name);
 
         private readonly HttpClient _http;
         private static readonly Regex StartsWithNumber = new(@"^\s*\d+", RegexOptions.Compiled);
 
-        // Fund name cache (fund list changes infrequently; caching avoids lots of API calls)
+        // Fund name cache (to avoid calling /fundraising/v1/funds repeatedly).
         private readonly SemaphoreSlim _fundCacheLock = new(1, 1);
         private Dictionary<int, string>? _fundNameCache;
         private DateTimeOffset _fundCacheLoadedAtUtc = DateTimeOffset.MinValue;
@@ -90,33 +87,12 @@ namespace CheerfulGiverNXT
         }
 
         /// <summary>
-        /// Returns the distinct funds this constituent has contributed to, derived from Gift API gift_splits.
+        /// Returns distinct fund IDs the constituent has contributed to by scanning gifts and their splits.
         /// </summary>
-        public async Task<IReadOnlyList<FundRef>> GetContributedFundsAsync(
+        public async Task<IReadOnlyList<int>> GetContributedFundIdsAsync(
             int constituentId,
             int maxGiftsToScan = 1000,
             CancellationToken ct = default)
-        {
-            var fundIds = await GetContributedFundIdsAsync(constituentId, maxGiftsToScan, ct);
-            if (fundIds.Count == 0)
-                return Array.Empty<FundRef>();
-
-            var nameMap = await GetFundNameMapAsync(ct);
-
-            return fundIds
-                .Select(id =>
-                {
-                    var name = nameMap.TryGetValue(id, out var n) && !string.IsNullOrWhiteSpace(n) ? n : $"Fund #{id}";
-                    return new FundRef(id, name);
-                })
-                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private async Task<IReadOnlyList<int>> GetContributedFundIdsAsync(
-            int constituentId,
-            int maxGiftsToScan,
-            CancellationToken ct)
         {
             if (constituentId <= 0)
                 return Array.Empty<int>();
@@ -124,15 +100,16 @@ namespace CheerfulGiverNXT
             maxGiftsToScan = Math.Max(1, maxGiftsToScan);
 
             const int pageSize = 200;
-            var offset = 0;
             var fundIds = new HashSet<int>();
 
+            var offset = 0;
             while (offset < maxGiftsToScan)
             {
                 var limit = Math.Min(pageSize, maxGiftsToScan - offset);
 
-                // Gift List filtered by constituent_id
+                // Gift List endpoint filtered by constituent_id.
                 var url = $"gift/v1/gifts?constituent_id={constituentId}&limit={limit}&offset={offset}";
+
                 using var resp = await SendWithRetryAfterAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
                 resp.EnsureSuccessStatusCode();
 
@@ -145,22 +122,21 @@ namespace CheerfulGiverNXT
 
                 foreach (var gift in gifts)
                 {
-                    if (gift.ValueKind != JsonValueKind.Object)
-                        continue;
-
-                    if (!gift.TryGetProperty("gift_splits", out var splits) || splits.ValueKind != JsonValueKind.Array)
-                        continue;
-
-                    foreach (var split in splits.EnumerateArray())
+                    if (gift.ValueKind == JsonValueKind.Object &&
+                        gift.TryGetProperty("gift_splits", out var splits) &&
+                        splits.ValueKind == JsonValueKind.Array)
                     {
-                        if (split.ValueKind != JsonValueKind.Object)
-                            continue;
-
-                        if (split.TryGetProperty("fund_id", out var fundIdEl) &&
-                            TryReadInt32(fundIdEl, out var fundId) &&
-                            fundId > 0)
+                        foreach (var split in splits.EnumerateArray())
                         {
-                            fundIds.Add(fundId);
+                            if (split.ValueKind != JsonValueKind.Object)
+                                continue;
+
+                            if (split.TryGetProperty("fund_id", out var fundIdEl) &&
+                                TryReadInt32(fundIdEl, out var fundId) &&
+                                fundId > 0)
+                            {
+                                fundIds.Add(fundId);
+                            }
                         }
                     }
                 }
@@ -171,6 +147,26 @@ namespace CheerfulGiverNXT
             }
 
             return fundIds.OrderBy(x => x).ToList();
+        }
+
+        /// <summary>
+        /// Returns distinct fund IDs + names for the constituent (names resolved via Fundraising funds list).
+        /// </summary>
+        public async Task<IReadOnlyList<FundRef>> GetContributedFundsAsync(
+            int constituentId,
+            int maxGiftsToScan = 1000,
+            CancellationToken ct = default)
+        {
+            var ids = await GetContributedFundIdsAsync(constituentId, maxGiftsToScan, ct);
+            if (ids.Count == 0)
+                return Array.Empty<FundRef>();
+
+            var nameMap = await GetFundNameMapAsync(ct);
+
+            return ids
+                .Select(id => new FundRef(id, nameMap.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name) ? name : $"Fund #{id}"))
+                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private async Task<Dictionary<int, string>> GetFundNameMapAsync(CancellationToken ct)
@@ -223,8 +219,7 @@ namespace CheerfulGiverNXT
                     if (funds.Count < pageSize)
                         break;
 
-                    // Safety stop if the API ignores offset for some reason.
-                    if (offset > 200_000)
+                    if (offset > 200_000) // safety
                         break;
                 }
 
