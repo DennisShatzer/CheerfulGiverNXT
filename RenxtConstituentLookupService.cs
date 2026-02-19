@@ -17,6 +17,7 @@ namespace CheerfulGiverNXT
             int Id,
             string FullName,
             string Spouse,
+            string Contact,
             string Street,
             string City,
             string State,
@@ -279,10 +280,22 @@ namespace CheerfulGiverNXT
                 zip = GetStringOrNumber(addr, "postal_code");
             }
 
+            // Primary contact (phone preferred, otherwise email)
+            var phone = "";
+            if (root.TryGetProperty("phone", out var phoneObj) && phoneObj.ValueKind == JsonValueKind.Object)
+                phone = Normalize(GetStringOrNumber(phoneObj, "number"));
+
+            var email = "";
+            if (root.TryGetProperty("email", out var emailObj) && emailObj.ValueKind == JsonValueKind.Object)
+                email = Normalize(GetStringOrNumber(emailObj, "address"));
+
+            var contact = phone.IfBlank(email);
+
             return new ConstituentGridRow(
                 Id: id,
                 FullName: fullName,
                 Spouse: spouse,
+                Contact: contact,
                 Street: street,
                 City: city,
                 State: state,

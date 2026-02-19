@@ -8,7 +8,16 @@
 
     <!-- Switch from WinForms to WPF -->
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>assets\CheerfulGiverNXT_App_Logo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="assets\CheerfulGiverNXT_App_Logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="assets\CheerfulGiverNXT_App_Logo.ico" />
+  </ItemGroup>
 
   <!-- Needed for the Kestrel HTTPS callback host -->
   <ItemGroup>

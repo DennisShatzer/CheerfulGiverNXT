@@ -135,28 +135,15 @@
     </TextBlock.Style>
 </TextBlock>
 
-<DatePicker Grid.Row="3" Grid.Column="1"
-            SelectedDate="{Binding SponsorshipDate}"
-            Margin="0">
-    <DatePicker.Style>
-        <!-- Same idea for DatePicker so it matches the rest of the form -->
-        <Style TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
-            <Setter Property="Visibility" Value="Collapsed"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                    <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-    </DatePicker.Style>
-</DatePicker>
-
 
             <DatePicker Grid.Row="3" Grid.Column="1"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
                         SelectedDate="{Binding SponsorshipDate}"
                         Margin="0">
                 <DatePicker.Style>
                     <Style TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
+
                         <Setter Property="Visibility" Value="Collapsed"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">

@@ -25,7 +25,18 @@ namespace CheerfulGiverNXT
             DataContext = vm;
 
             // Populate the read-only auth preview fields before the operator does anything.
-            Loaded += async (_, __) => await vm.RefreshAuthPreviewAsync();
+            Loaded += async (_, __) =>
+            {
+                // Put the cursor in the search box when the window opens.
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    SearchTextBox.Focus();
+                    Keyboard.Focus(SearchTextBox);
+                    SearchTextBox.SelectAll();
+                }, DispatcherPriority.Input);
+
+                await vm.RefreshAuthPreviewAsync();
+            };
 
             // Start a UI timer that shows "refresh in mm:ss" based on JWT exp.
             _tokenCountdownTimer = new DispatcherTimer(DispatcherPriority.Background)

@@ -19,7 +19,7 @@
         <!-- Search row -->
         <DockPanel Grid.Row="0" LastChildFill="True">
             <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBox Width="420"
+            <TextBox x:Name="SearchTextBox" Width="420"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      VerticalAlignment="Center"
                      Margin="0,0,8,0"
@@ -98,6 +98,7 @@
     <!-- Wider / more flexible columns -->
     <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="2*" MinWidth="260"/>
     <DataGridTextColumn Header="Spouse" Binding="{Binding Spouse}" Width="1.5*" MinWidth="220"/>
+    <DataGridTextColumn Header="Contact" Binding="{Binding Contact}" Width="2*" MinWidth="240"/>
     <DataGridTextColumn Header="Street address" Binding="{Binding Street}" Width="3*" MinWidth="360"/>
 
     <DataGridTextColumn Header="City" Binding="{Binding City}" Width="1.5*" MinWidth="180"/>
