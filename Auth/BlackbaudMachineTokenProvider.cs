@@ -1,9 +1,10 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using CheerfulGiverNXT.Data;
+using Microsoft.Data.SqlClient;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Auth
 {
     public sealed class BlackbaudMachineTokenProvider
     {

@@ -13,7 +13,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Services
 {
     /// <summary>
     /// Minimal pledge (commitment only; no money received) service using SKY API Gifts v2.

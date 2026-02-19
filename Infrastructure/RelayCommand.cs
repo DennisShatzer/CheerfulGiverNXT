@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using System.Windows.Input;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Infrastructure
 {
     public sealed class RelayCommand : ICommand
     {

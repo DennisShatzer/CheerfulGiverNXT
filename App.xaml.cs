@@ -1,3 +1,6 @@
+using CheerfulGiverNXT.Auth;
+using CheerfulGiverNXT.Data;
+using CheerfulGiverNXT.Services;
 using System;
 using System.Configuration;
 using System.Net.Http;

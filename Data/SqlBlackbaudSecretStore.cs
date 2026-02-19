@@ -4,7 +4,7 @@ using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Data
 {
     public sealed record BlackbaudSecrets(
         string AccessToken,

@@ -1,3 +1,4 @@
+using CheerfulGiverNXT.Services;
 using System;
 using System.Configuration;
 using System.Linq;
@@ -5,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using CheerfulGiverNXT.ViewModels;
 
 namespace CheerfulGiverNXT
 {

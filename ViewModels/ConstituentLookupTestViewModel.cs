@@ -6,8 +6,11 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using CheerfulGiverNXT.Services;
+using CheerfulGiverNXT.Auth;
+using CheerfulGiverNXT.Infrastructure;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.ViewModels
 {
     public sealed class ConstituentLookupTestViewModel : INotifyPropertyChanged
     {

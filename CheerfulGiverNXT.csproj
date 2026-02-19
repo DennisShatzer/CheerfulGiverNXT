@@ -12,11 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="assets\CheerfulGiverNXT_App_Logo.ico" />
+    <None Remove="Assets\CheerfulGiverNXT_App_Logo.ico" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="assets\CheerfulGiverNXT_App_Logo.ico" />
+    <Content Include="Assets\CheerfulGiverNXT_App_Logo.ico" />
   </ItemGroup>
 
   <!-- Needed for the Kestrel HTTPS callback host -->

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace CheerfulGiverNXT;
+namespace CheerfulGiverNXT.Services;
 
 public enum PledgeFrequency
 {

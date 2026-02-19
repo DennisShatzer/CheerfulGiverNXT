@@ -2,6 +2,8 @@
 // Pledge entry screen VM (pledge commitments only) with a friendly “One-time” option.
 // Hidden fields (fund/campaign/appeal/package/installments/start-date/reminder) remain in the VM for processing.
 
+using CheerfulGiverNXT.Infrastructure;
+using CheerfulGiverNXT.Services;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -12,7 +14,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.ViewModels
 {
     public sealed class GiftEntryViewModel : INotifyPropertyChanged
     {
