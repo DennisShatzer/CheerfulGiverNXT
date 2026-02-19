@@ -21,7 +21,19 @@ namespace CheerfulGiverNXT
         private readonly BlackbaudMachineTokenProvider _tokenProvider;
 
 
-        public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
+        
+        private const int NoMatchPromptThreshold = 3;
+        private int _noMatchStreak;
+
+        public event EventHandler<AddConstituentRequestedEventArgs>? AddConstituentRequested;
+
+        public sealed class AddConstituentRequestedEventArgs : EventArgs
+        {
+            public string SearchText { get; }
+            public AddConstituentRequestedEventArgs(string searchText) => SearchText = searchText;
+        }
+
+public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
 
         public RenxtConstituentLookupService LookupService => App.ConstituentService;
 
@@ -95,6 +107,21 @@ namespace CheerfulGiverNXT
         public bool IsNotBusy => !IsBusy;
         public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
+        private bool _isAuthorized;
+        public bool IsAuthorized
+        {
+            get => _isAuthorized;
+            private set
+            {
+                if (_isAuthorized == value) return;
+                _isAuthorized = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsNotAuthorized));
+            }
+        }
+
+        public bool IsNotAuthorized => !IsAuthorized;
+
         private RenxtConstituentLookupService.ConstituentGridRow? _selectedRow;
         public RenxtConstituentLookupService.ConstituentGridRow? SelectedRow
         {
@@ -133,14 +160,17 @@ namespace CheerfulGiverNXT
             try
             {
                 var (token, _) = await _tokenProvider.GetAsync(ct);
+                IsAuthorized = true;
                 AccessToken = Preview(token, 18);
             }
             catch (InvalidOperationException)
             {
+                IsAuthorized = false;
                 AccessToken = "(not authorized – click Authorize this PC)";
             }
             catch
             {
+                IsAuthorized = false;
                 AccessToken = "(error)";
             }
         }
@@ -208,6 +238,21 @@ namespace CheerfulGiverNXT
                     Results.Add(row);
 
                 StatusText = rows.Count == 0 ? "No matches." : $"Found {rows.Count} match(es).";
+
+                if (rows.Count == 0)
+                {
+                    _noMatchStreak++;
+                    if (_noMatchStreak >= NoMatchPromptThreshold)
+                    {
+                        _noMatchStreak = 0;
+                        AddConstituentRequested?.Invoke(this, new AddConstituentRequestedEventArgs(text));
+                    }
+                }
+                else
+                {
+                    _noMatchStreak = 0;
+                }
+
             }
             catch (OperationCanceledException)
             {
@@ -242,12 +287,20 @@ namespace CheerfulGiverNXT
             {
                 SubscriptionKey = "(error reading SQL)";
             }
-
             // Access token: requires machine authorization (refreshes automatically if needed).
-            var (token, _) = await _tokenProvider.GetAsync(ct);
+            try
+            {
+                var (token, _) = await _tokenProvider.GetAsync(ct);
+                IsAuthorized = true;
 
-            // Don't show the full token on-screen; show a preview.
-            AccessToken = Preview(token, 18);
+                // Don't show the full token on-screen; show a preview.
+                AccessToken = Preview(token, 18);
+            }
+            catch (InvalidOperationException)
+            {
+                IsAuthorized = false;
+                throw;
+            }
         }
 
         private static string Preview(string s, int take)

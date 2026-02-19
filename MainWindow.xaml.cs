@@ -24,6 +24,7 @@ namespace CheerfulGiverNXT
             var vm = new ConstituentLookupTestViewModel();
             DataContext = vm;
 
+            vm.AddConstituentRequested += Vm_AddConstituentRequested;
             // Populate the read-only auth preview fields before the operator does anything.
             Loaded += async (_, __) =>
             {
@@ -47,6 +48,44 @@ namespace CheerfulGiverNXT
             _tokenCountdownTimer.Start();
 
             Closed += (_, __) => _tokenCountdownTimer.Stop();
+        }
+
+        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "No matches found after 3 searches.\n\nWould you like to create a new constituent record?",
+                "Create New Constituent",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    SearchTextBox.Focus();
+                    Keyboard.Focus(SearchTextBox);
+                    SearchTextBox.SelectAll();
+                }, DispatcherPriority.Input);
+
+                return;
+            }
+
+            var win = new AddConstituentWindow(e.SearchText)
+            {
+                Owner = this
+            };
+
+            var ok = win.ShowDialog() == true;
+
+            if (ok && DataContext is ConstituentLookupTestViewModel vm && !string.IsNullOrWhiteSpace(win.DraftDisplayName))
+                vm.StatusText =  "New constituent draft: {win.DraftDisplayName} (not yet saved).";
+
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                SearchTextBox.Focus();
+                Keyboard.Focus(SearchTextBox);
+                SearchTextBox.SelectAll();
+            }, DispatcherPriority.Input);
         }
 
         private void SearchBox_KeyDown(object sender, KeyEventArgs e)

@@ -34,12 +34,18 @@
                     Width="140"
                     Margin="0,0,8,0"
                     Command="{Binding LoginCommand}"
-                    IsEnabled="{Binding IsNotBusy}"/>
-
-            <Button Content="Copy Selected ID"
-                    Width="150"
-                    Command="{Binding CopySelectedIdCommand}"
-                    IsEnabled="{Binding HasSelection}"/>
+                    IsEnabled="{Binding IsNotBusy}">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsNotAuthorized}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
         </DockPanel>
 
         <!-- Auth debug (read-only) -->
