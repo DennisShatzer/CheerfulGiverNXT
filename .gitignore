@@ -16,6 +16,19 @@
 # Mono auto generated files
 mono_crash.*
 
+# Secrets / local-only configs
+App_Backup.config
+App.config
+*.backup
+*.bak
+*.orig
+*.local.json
+*.secrets.json
+
+#Log / payloads that may contain tokens
+CheerfulErrors.txt
+last_pledge_payload*.json
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
