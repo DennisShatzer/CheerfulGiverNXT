@@ -22,7 +22,11 @@ namespace CheerfulGiverNXT.Data
         Task UpsertAsync(SqlConnection conn, string secretKey, BlackbaudSecrets secrets, CancellationToken ct = default);
 
         Task<string?> GetGlobalSubscriptionKeyAsync(SqlConnection conn, CancellationToken ct = default);
+        Task<string?> GetGlobalSubscriptionKeyAsync(CancellationToken ct = default);
         Task SetGlobalSubscriptionKeyAsync(string subscriptionKey, CancellationToken ct = default);
+
+        Task<string?> GetOAuthClientSecretAsync(CancellationToken ct = default);
+        Task SetOAuthClientSecretAsync(string clientSecret, CancellationToken ct = default);
     }
 
     /// <summary>
@@ -30,12 +34,13 @@ namespace CheerfulGiverNXT.Data
     /// This version stores DPAPI-encrypted blobs in CGOAuthSecrets.*Enc columns and DOES NOT require any passphrase.
     ///
     /// Requires stored procs:
-    ///   - dbo.CGOAuthSecrets_Get2
-    ///   - dbo.CGOAuthSecrets_Upsert2
+    /// - dbo.CGOAuthSecrets_Get2
+    /// - dbo.CGOAuthSecrets_Upsert2
     /// </summary>
     public sealed class SqlBlackbaudSecretStore : IBlackbaudSecretStore
     {
         public const string GlobalKey = "__GLOBAL__";
+        private const string OAuthClientSecretKey = "__OAUTH_CLIENT_SECRET__";
 
         private const string GetProc = "dbo.CGOAuthSecrets_Get2";
         private const string UpsertProc = "dbo.CGOAuthSecrets_Upsert2";
@@ -70,11 +75,7 @@ namespace CheerfulGiverNXT.Data
 
         public async Task<BlackbaudSecrets?> GetAsync(SqlConnection conn, string secretKey, CancellationToken ct = default)
         {
-            await using var cmd = new SqlCommand(GetProc, conn)
-            {
-                CommandType = CommandType.StoredProcedure
-            };
-
+            await using var cmd = new SqlCommand(GetProc, conn) { CommandType = CommandType.StoredProcedure };
             cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = secretKey });
 
             await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -121,34 +122,19 @@ namespace CheerfulGiverNXT.Data
 
         public async Task UpsertAsync(SqlConnection conn, string secretKey, BlackbaudSecrets secrets, CancellationToken ct = default)
         {
-            await using var cmd = new SqlCommand(UpsertProc, conn)
-            {
-                CommandType = CommandType.StoredProcedure
-            };
-
+            await using var cmd = new SqlCommand(UpsertProc, conn) { CommandType = CommandType.StoredProcedure };
             cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = secretKey });
 
             var accessEnc = ProtectString(secrets.AccessToken);
             var refreshEnc = ProtectString(secrets.RefreshToken);
             var subKeyEnc = ProtectString(secrets.SubscriptionKey);
 
-            cmd.Parameters.Add(new SqlParameter("@AccessTokenEnc", SqlDbType.VarBinary, -1)
-            { Value = (object?)accessEnc ?? DBNull.Value });
-
-            cmd.Parameters.Add(new SqlParameter("@RefreshTokenEnc", SqlDbType.VarBinary, -1)
-            { Value = (object?)refreshEnc ?? DBNull.Value });
-
-            cmd.Parameters.Add(new SqlParameter("@ExpiresAtUtc", SqlDbType.DateTime2)
-            { Value = secrets.ExpiresAtUtc == DateTimeOffset.MinValue ? (object)DBNull.Value : secrets.ExpiresAtUtc.UtcDateTime });
-
-            cmd.Parameters.Add(new SqlParameter("@TokenType", SqlDbType.NVarChar, 50)
-            { Value = (object?)(secrets.TokenType ?? "") ?? "" });
-
-            cmd.Parameters.Add(new SqlParameter("@Scope", SqlDbType.NVarChar, 4000)
-            { Value = (object?)(secrets.Scope ?? "") ?? "" });
-
-            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1)
-            { Value = (object?)subKeyEnc ?? DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@AccessTokenEnc", SqlDbType.VarBinary, -1) { Value = (object?)accessEnc ?? DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@RefreshTokenEnc", SqlDbType.VarBinary, -1) { Value = (object?)refreshEnc ?? DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@ExpiresAtUtc", SqlDbType.DateTime2) { Value = secrets.ExpiresAtUtc == DateTimeOffset.MinValue ? (object)DBNull.Value : secrets.ExpiresAtUtc.UtcDateTime });
+            cmd.Parameters.Add(new SqlParameter("@TokenType", SqlDbType.NVarChar, 50) { Value = (object?)(secrets.TokenType ?? "") ?? "" });
+            cmd.Parameters.Add(new SqlParameter("@Scope", SqlDbType.NVarChar, 4000) { Value = (object?)(secrets.Scope ?? "") ?? "" });
+            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1) { Value = (object?)subKeyEnc ?? DBNull.Value });
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -160,9 +146,6 @@ namespace CheerfulGiverNXT.Data
             return string.IsNullOrWhiteSpace(global.SubscriptionKey) ? null : global.SubscriptionKey;
         }
 
-        /// <summary>
-        /// Convenience overload: opens its own connection and reads the global subscription key.
-        /// </summary>
         public async Task<string?> GetGlobalSubscriptionKeyAsync(CancellationToken ct = default)
         {
             await using var conn = new SqlConnection(_connectionString);
@@ -175,15 +158,34 @@ namespace CheerfulGiverNXT.Data
             if (string.IsNullOrWhiteSpace(subscriptionKey))
                 throw new ArgumentException("Subscription key is required.", nameof(subscriptionKey));
 
+            await SetSingleSecretInSubscriptionColumnAsync(GlobalKey, subscriptionKey.Trim(), ct).ConfigureAwait(false);
+        }
+
+        public async Task<string?> GetOAuthClientSecretAsync(CancellationToken ct = default)
+        {
             await using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync(ct).ConfigureAwait(false);
 
-            await using var cmd = new SqlCommand(UpsertProc, conn)
-            {
-                CommandType = CommandType.StoredProcedure
-            };
+            var row = await GetAsync(conn, OAuthClientSecretKey, ct).ConfigureAwait(false);
+            if (row is null) return null;
+            return string.IsNullOrWhiteSpace(row.SubscriptionKey) ? null : row.SubscriptionKey;
+        }
 
-            cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = GlobalKey });
+        public async Task SetOAuthClientSecretAsync(string clientSecret, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(clientSecret))
+                throw new ArgumentException("client_secret is required.", nameof(clientSecret));
+
+            await SetSingleSecretInSubscriptionColumnAsync(OAuthClientSecretKey, clientSecret.Trim(), ct).ConfigureAwait(false);
+        }
+
+        private async Task SetSingleSecretInSubscriptionColumnAsync(string key, string value, CancellationToken ct)
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+
+            await using var cmd = new SqlCommand(UpsertProc, conn) { CommandType = CommandType.StoredProcedure };
+            cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = key });
 
             // Leave token fields unchanged by passing NULL for them.
             cmd.Parameters.Add(new SqlParameter("@AccessTokenEnc", SqlDbType.VarBinary, -1) { Value = DBNull.Value });
@@ -192,9 +194,8 @@ namespace CheerfulGiverNXT.Data
             cmd.Parameters.Add(new SqlParameter("@TokenType", SqlDbType.NVarChar, 50) { Value = DBNull.Value });
             cmd.Parameters.Add(new SqlParameter("@Scope", SqlDbType.NVarChar, 4000) { Value = DBNull.Value });
 
-            var subKeyEnc = ProtectString(subscriptionKey.Trim());
-            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1)
-            { Value = (object?)subKeyEnc ?? DBNull.Value });
+            var enc = ProtectString(value);
+            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1) { Value = (object?)enc ?? DBNull.Value });
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

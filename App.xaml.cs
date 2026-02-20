@@ -14,7 +14,7 @@ namespace CheerfulGiverNXT
     /// <summary>
     /// App startup wiring:
     /// - App.config contains ONLY bootstrap settings (SQL connection string + non-secrets).
-    /// - Subscription key + tokens live in SQL (DPAPI-encrypted via SqlBlackbaudSecretStore).
+    /// - Subscription key + tokens + OAuth client_secret live in SQL (DPAPI-encrypted via SqlBlackbaudSecretStore).
     /// - One shared HttpClient uses BlackbaudAuthHandler for auto token refresh + subscription key header injection.
     /// </summary>
     public partial class App : Application
@@ -38,28 +38,20 @@ namespace CheerfulGiverNXT
                 var sqlConnStr = ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString
                     ?? throw new InvalidOperationException("Missing connection string 'CheerfulGiver' in App.config.");
 
-                // ClientId is not secret; keep it in App.config for now.
+                // ClientId is not secret; keep it in App.config.
                 var clientId = ConfigurationManager.AppSettings["BlackbaudClientId"]
                     ?? throw new InvalidOperationException("Missing appSetting BlackbaudClientId in App.config.");
 
-                // For PUBLIC PKCE apps, client secret is not used/stored.
-                string? clientSecret = null;
-
                 SecretStore = new SqlBlackbaudSecretStore(sqlConnStr);
+
+                // Ensure global secrets exist in SQL (prompt if missing).
+                await EnsureGlobalSubscriptionKeyAsync().ConfigureAwait(true);
+                var clientSecret = await EnsureOAuthClientSecretAsync().ConfigureAwait(true);
+
                 TokenProvider = new BlackbaudMachineTokenProvider(sqlConnStr, SecretStore, clientId, clientSecret);
 
-                // Ensure subscription key exists in SQL (prompt if missing).
-                await EnsureGlobalSubscriptionKeyAsync().ConfigureAwait(true);
-
-                var handler = new BlackbaudAuthHandler(TokenProvider)
-                {
-                    InnerHandler = new HttpClientHandler()
-                };
-
-                BlackbaudApiHttp = new HttpClient(handler)
-                {
-                    BaseAddress = new Uri("https://api.sky.blackbaud.com/")
-                };
+                var handler = new BlackbaudAuthHandler(TokenProvider) { InnerHandler = new HttpClientHandler() };
+                BlackbaudApiHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.sky.blackbaud.com/") };
                 BlackbaudApiHttp.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
                 ConstituentService = new RenxtConstituentLookupService(BlackbaudApiHttp);
@@ -82,23 +74,46 @@ namespace CheerfulGiverNXT
             if (!string.IsNullOrWhiteSpace(existing))
                 return;
 
-            var entered = PromptForSubscriptionKey();
+            var entered = PromptForSecret("Enter Blackbaud Subscription Key",
+                "This app needs your Blackbaud SKY API subscription key to call the API.\n" +
+                "It will be stored encrypted (DPAPI) in your local SQL Express database under __GLOBAL__.");
+
             if (string.IsNullOrWhiteSpace(entered))
                 throw new InvalidOperationException("No subscription key stored. Enter it to continue.");
 
             await SecretStore.SetGlobalSubscriptionKeyAsync(entered.Trim()).ConfigureAwait(true);
         }
 
-        private static string? PromptForSubscriptionKey()
+        private static async Task<string> EnsureOAuthClientSecretAsync()
+        {
+            var existing = await SecretStore.GetOAuthClientSecretAsync().ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing!;
+
+            var entered = PromptForSecret("Enter Blackbaud OAuth Client Secret",
+                "To enable 'Authorize this PC once' and automatic token refresh,\n" +
+                "this app uses the confidential Authorization Code flow.\n\n" +
+                "Enter your Blackbaud application client_secret (Primary application secret).\n" +
+                "It will be stored encrypted (DPAPI) in your local SQL Express database.");
+
+            if (string.IsNullOrWhiteSpace(entered))
+                throw new InvalidOperationException("No OAuth client_secret stored. Enter it to continue.");
+
+            entered = entered.Trim();
+            await SecretStore.SetOAuthClientSecretAsync(entered).ConfigureAwait(true);
+            return entered;
+        }
+
+        private static string? PromptForSecret(string title, string message)
         {
             var win = new Window
             {
-                Title = "Enter Blackbaud Subscription Key",
-                Width = 520,
-                Height = 180,
+                Title = title,
+                Width = 560,
+                Height = 210,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ResizeMode = ResizeMode.NoResize,
-                Content = BuildSubscriptionKeyContent(out PasswordBox pb, out Button okBtn),
+                Content = BuildSecretPromptContent(message, out PasswordBox pb, out Button okBtn),
                 Topmost = true
             };
 
@@ -108,11 +123,10 @@ namespace CheerfulGiverNXT
             var result = win.ShowDialog();
             if (result == true)
                 return pb.Password;
-
             return null;
         }
 
-        private static UIElement BuildSubscriptionKeyContent(out PasswordBox pb, out Button okBtn)
+        private static UIElement BuildSecretPromptContent(string message, out PasswordBox pb, out Button okBtn)
         {
             var root = new Grid { Margin = new Thickness(14) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -121,45 +135,22 @@ namespace CheerfulGiverNXT
 
             var text = new TextBlock
             {
-                Text = "This app needs your Blackbaud SKY API subscription key to call the API.\n" +
-                       "It will be stored encrypted (DPAPI) in your local SQL Express database under __GLOBAL__.",
+                Text = message,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
             Grid.SetRow(text, 0);
             root.Children.Add(text);
 
-            pb = new PasswordBox
-            {
-                Margin = new Thickness(0, 0, 0, 10)
-            };
+            pb = new PasswordBox { Margin = new Thickness(0, 0, 0, 10) };
             Grid.SetRow(pb, 1);
             root.Children.Add(pb);
 
-            var btnPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-
-            okBtn = new Button
-            {
-                Content = "OK",
-                Width = 90,
-                IsDefault = true,
-                Margin = new Thickness(0, 0, 8, 0)
-            };
-
-            var cancel = new Button
-            {
-                Content = "Cancel",
-                Width = 90,
-                IsCancel = true
-            };
-
+            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            okBtn = new Button { Content = "OK", Width = 90, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = "Cancel", Width = 90, IsCancel = true };
             btnPanel.Children.Add(okBtn);
             btnPanel.Children.Add(cancel);
-
             Grid.SetRow(btnPanel, 2);
             root.Children.Add(btnPanel);
 
@@ -168,12 +159,7 @@ namespace CheerfulGiverNXT
 
         protected override void OnExit(ExitEventArgs e)
         {
-            try
-            {
-                BlackbaudApiHttp?.Dispose();
-            }
-            catch { /* ignore */ }
-
+            try { BlackbaudApiHttp?.Dispose(); } catch { /* ignore */ }
             base.OnExit(e);
         }
     }

@@ -1,14 +1,13 @@
 USE [CheerfulGiver];
 GO
 
-/*
-  V2 procs for DPAPI-encrypted blobs stored in dbo.CGOAuthSecrets.*Enc columns.
-  - No passphrase
-  - No SQL ENCRYPTBYPASSPHRASE / DECRYPTBYPASSPHRASE
-  - App encrypts/decrypts using Windows DPAPI (see Data/SqlBlackbaudSecretStore.cs)
-*/
+/* ---------------------------------------------------------------------------
+   V2 procs: NO PASSPHRASE
+   These procs simply read/write the encrypted VARBINARY columns in dbo.CGOAuthSecrets.
+   Encryption/decryption happens in the app (DPAPI) via SqlBlackbaudSecretStore DPAPI mode.
+--------------------------------------------------------------------------- */
 
-CREATE OR ALTER PROCEDURE dbo.CGOAuthSecrets_Get2
+CREATE OR ALTER PROCEDURE [dbo].[CGOAuthSecrets_Get2]
     @SecretKey NVARCHAR(128)
 AS
 BEGIN
@@ -17,7 +16,7 @@ BEGIN
     SELECT
         AccessTokenEnc,
         RefreshTokenEnc,
-        ExpiresAtUtc,
+        ExpiresAtUtc = CONVERT(DATETIME2(0), ExpiresAtUtc),
         TokenType,
         Scope,
         SubscriptionKeyEnc
@@ -26,7 +25,7 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE dbo.CGOAuthSecrets_Upsert2
+CREATE OR ALTER PROCEDURE [dbo].[CGOAuthSecrets_Upsert2]
     @SecretKey          NVARCHAR(128),
     @AccessTokenEnc     VARBINARY(MAX) = NULL,
     @RefreshTokenEnc    VARBINARY(MAX) = NULL,

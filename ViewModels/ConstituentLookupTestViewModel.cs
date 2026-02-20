@@ -1,15 +1,16 @@
-using System.Configuration;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Configuration;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using CheerfulGiverNXT.Services;
+
 using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Infrastructure;
 using CheerfulGiverNXT.Infrastructure.Configuration;
+using CheerfulGiverNXT.Services;
 
 namespace CheerfulGiverNXT.ViewModels
 {
@@ -21,11 +22,8 @@ namespace CheerfulGiverNXT.ViewModels
         public RelayCommand CopySelectedIdCommand { get; }
 
         private CancellationTokenSource? _cts;
-
         private readonly BlackbaudMachineTokenProvider _tokenProvider;
 
-
-        
         private const int NoMatchPromptThreshold = 3;
         private int _noMatchStreak;
 
@@ -37,7 +35,7 @@ namespace CheerfulGiverNXT.ViewModels
             public AddConstituentRequestedEventArgs(string searchText) => SearchText = searchText;
         }
 
-public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
+        public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Results { get; } = new();
 
         public RenxtConstituentLookupService LookupService => App.ConstituentService;
 
@@ -105,6 +103,8 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsNotBusy));
                 OnPropertyChanged(nameof(BusyVisibility));
+                LoginCommand.RaiseCanExecuteChanged();
+                SearchCommand.RaiseCanExecuteChanged();
             }
         }
 
@@ -140,8 +140,6 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
         }
 
         public bool HasSelection => SelectedRow is not null;
-
-        
 
         /// <summary>
         /// Loads AccessToken/SubscriptionKey preview fields for the UI (read-only debug).
@@ -179,23 +177,26 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             }
         }
 
-// STEP 2: Authorize this computer (stores refresh token in SQL under MACHINE:<COMPUTERNAME>)
+        // STEP 2: Authorize this computer (stores refresh token in SQL under MACHINE:<COMPUTERNAME>)
         private async Task AuthorizeThisComputerAsync()
         {
             IsBusy = true;
             StatusText = "Opening browser to authorize this computer...";
-            LoginCommand.RaiseCanExecuteChanged();
-            SearchCommand.RaiseCanExecuteChanged();
 
             try
             {
                 var redirectUri = BlackbaudConfig.RedirectUri;
-                const string scope = "rnxt.r offline_access";
+
+                // IMPORTANT: if Blackbaud does not return a refresh_token, this machine will NOT be seeded.
+                // Allow configuring scopes in App.config, defaulting to rnxt.r + offline_access.
+                var scope = ConfigurationManager.AppSettings["BlackbaudScopes"];
+                if (string.IsNullOrWhiteSpace(scope))
+                    scope = "rnxt.r offline_access";
 
                 await _tokenProvider.SeedThisMachineAsync(redirectUri, scope);
 
                 // Load + show current values (for the debug expander)
-                await LoadDebugAuthValuesAsync();
+                await RefreshAuthPreviewAsync();
 
                 StatusText = $"Authorized for this computer ({Environment.MachineName}).";
             }
@@ -206,8 +207,6 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             finally
             {
                 IsBusy = false;
-                LoginCommand.RaiseCanExecuteChanged();
-                SearchCommand.RaiseCanExecuteChanged();
             }
         }
 
@@ -221,8 +220,7 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             }
 
             // If we need to prompt to add a new constituent, do it *after* the search completes
-            // and the busy indicator has been cleared. Otherwise the progress bar stays active
-            // while the operator is in the add flow.
+            // and the busy indicator has been cleared.
             bool requestAddConstituent = false;
             string requestAddSearchText = text;
 
@@ -231,7 +229,6 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             _cts = new CancellationTokenSource();
 
             IsBusy = true;
-            SearchCommand.RaiseCanExecuteChanged();
             StatusText = "Searching...";
 
             try
@@ -263,7 +260,6 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
                 {
                     _noMatchStreak = 0;
                 }
-
             }
             catch (OperationCanceledException)
             {
@@ -282,12 +278,13 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             finally
             {
                 IsBusy = false;
-                SearchCommand.RaiseCanExecuteChanged();
             }
 
             if (requestAddConstituent)
             {
-                AddConstituentRequested?.Invoke(this, new AddConstituentRequestedEventArgs(requestAddSearchText));
+                // Raise on UI thread; MainWindow shows a MessageBox and potentially opens a dialog.
+                _ = Application.Current.Dispatcher.InvokeAsync(() =>
+                    AddConstituentRequested?.Invoke(this, new AddConstituentRequestedEventArgs(requestAddSearchText)));
             }
         }
 
@@ -303,20 +300,13 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             {
                 SubscriptionKey = "(error reading SQL)";
             }
-            // Access token: requires machine authorization (refreshes automatically if needed).
-            try
-            {
-                var (token, _) = await _tokenProvider.GetAsync(ct);
-                IsAuthorized = true;
 
-                // Don't show the full token on-screen; show a preview.
-                AccessToken = Preview(token, 18);
-            }
-            catch (InvalidOperationException)
-            {
-                IsAuthorized = false;
-                throw;
-            }
+            // Access token: requires machine authorization (refreshes automatically if needed).
+            var (token, _) = await _tokenProvider.GetAsync(ct);
+            IsAuthorized = true;
+
+            // Don't show the full token on-screen; show a preview.
+            AccessToken = Preview(token, 18);
         }
 
         private static string Preview(string s, int take)
