@@ -24,8 +24,10 @@ namespace CheerfulGiverNXT
 
             var vm = new ConstituentLookupTestViewModel();
             DataContext = vm;
-
             vm.AddConstituentRequested += Vm_AddConstituentRequested;
+
+            // Admin shortcut: Ctrl+Shift+S opens the Secrets/Admin screen.
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
 
             Loaded += async (_, __) =>
             {
@@ -42,14 +44,26 @@ namespace CheerfulGiverNXT
             };
 
             // Start a UI timer that shows "refresh in mm:ss" based on JWT exp.
-            _tokenCountdownTimer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromSeconds(1)
-            };
+            _tokenCountdownTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
             _tokenCountdownTimer.Tick += (_, __) => UpdateTokenCountdown();
             _tokenCountdownTimer.Start();
 
             Closed += (_, __) => _tokenCountdownTimer.Stop();
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.S) return;
+            if (Keyboard.Modifiers != (ModifierKeys.Control | ModifierKeys.Shift)) return;
+
+            e.Handled = true;
+
+            var win = new AdminSecretsWindow { Owner = this };
+            win.ShowDialog();
+
+            // Secrets may have been updated; refresh the preview fields.
+            if (DataContext is ConstituentLookupTestViewModel vm)
+                _ = vm.RefreshAuthPreviewAsync();
         }
 
         private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e)
@@ -66,11 +80,7 @@ namespace CheerfulGiverNXT
                 return;
             }
 
-            var win = new AddConstituentWindow(e.SearchText)
-            {
-                Owner = this
-            };
-
+            var win = new AddConstituentWindow(e.SearchText) { Owner = this };
             var ok = win.ShowDialog() == true;
 
             if (ok && DataContext is ConstituentLookupTestViewModel vm)
@@ -103,8 +113,7 @@ namespace CheerfulGiverNXT
         {
             if (e.Key != Key.Enter) return;
 
-            if (DataContext is ConstituentLookupTestViewModel vm &&
-                vm.SearchCommand.CanExecute(null))
+            if (DataContext is ConstituentLookupTestViewModel vm && vm.SearchCommand.CanExecute(null))
             {
                 vm.SearchCommand.Execute(null);
                 e.Handled = true;
@@ -126,8 +135,11 @@ namespace CheerfulGiverNXT
 
                 _ = funds; // placeholder until gift entry uses these
 
-                var w = new GiftWindow(vm.SelectedRow /*, funds */);
-                w.Owner = this;
+                var w = new GiftWindow(vm.SelectedRow /*, funds */)
+                {
+                    Owner = this
+                };
+
                 w.ShowDialog();
             }
             finally
@@ -147,7 +159,6 @@ namespace CheerfulGiverNXT
             }
 
             var token = vm.AccessToken;
-
             if (string.IsNullOrWhiteSpace(token))
             {
                 _lastToken = null;
@@ -194,9 +205,11 @@ namespace CheerfulGiverNXT
         private static string FormatHms(TimeSpan t)
         {
             if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+
             // Show H:MM:SS when >= 1 hour, else MM:SS
             if (t.TotalHours >= 1)
                 return $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
+
             return $"{t.Minutes:00}:{t.Seconds:00}";
         }
 
@@ -210,7 +223,6 @@ namespace CheerfulGiverNXT
 
                 var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
                 using var doc = JsonDocument.Parse(payloadJson);
-
                 if (!doc.RootElement.TryGetProperty("exp", out var expEl)) return null;
 
                 // exp is seconds since Unix epoch
@@ -238,10 +250,16 @@ namespace CheerfulGiverNXT
             // Pad to multiple of 4
             switch (s.Length % 4)
             {
-                case 0: break;
-                case 2: s += "=="; break;
-                case 3: s += "="; break;
-                default: throw new FormatException("Invalid base64url string length.");
+                case 0:
+                    break;
+                case 2:
+                    s += "==";
+                    break;
+                case 3:
+                    s += "=";
+                    break;
+                default:
+                    throw new FormatException("Invalid base64url string length.");
             }
 
             return Convert.FromBase64String(s);
