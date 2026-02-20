@@ -9,6 +9,7 @@ using System.Windows;
 using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Infrastructure;
+using CheerfulGiverNXT.Infrastructure.Configuration;
 
 namespace CheerfulGiverNXT.ViewModels
 {

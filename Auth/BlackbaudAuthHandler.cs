@@ -1,10 +1,9 @@
-using CheerfulGiverNXT.Auth;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Auth
 {
     /// <summary>
     /// Injects Bearer token and subscription key into every SKY API request.

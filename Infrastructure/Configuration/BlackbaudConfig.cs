@@ -1,7 +1,7 @@
 using System;
 using System.Configuration;
 
-namespace CheerfulGiverNXT
+namespace CheerfulGiverNXT.Infrastructure.Configuration
 {
     /// <summary>
     /// Central place to read Blackbaud-related settings from App.config.
