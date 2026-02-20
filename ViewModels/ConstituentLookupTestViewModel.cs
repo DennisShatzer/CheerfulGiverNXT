@@ -190,7 +190,7 @@ public ObservableCollection<RenxtConstituentLookupService.ConstituentGridRow> Re
             try
             {
                 var redirectUri = BlackbaudConfig.RedirectUri;
-                const string scope = "rnxt.r";
+                const string scope = "rnxt.r offline_access";
 
                 await _tokenProvider.SeedThisMachineAsync(redirectUri, scope);
 

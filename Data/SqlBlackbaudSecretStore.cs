@@ -1,6 +1,8 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System;
 using System.Data;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -23,47 +25,90 @@ namespace CheerfulGiverNXT.Data
         Task SetGlobalSubscriptionKeyAsync(string subscriptionKey, CancellationToken ct = default);
     }
 
+    /// <summary>
+    /// SQL-backed secret store for Blackbaud tokens and subscription key.
+    /// This version stores DPAPI-encrypted blobs in CGOAuthSecrets.*Enc columns and DOES NOT require any passphrase.
+    ///
+    /// Requires stored procs:
+    ///   - dbo.CGOAuthSecrets_Get2
+    ///   - dbo.CGOAuthSecrets_Upsert2
+    /// </summary>
     public sealed class SqlBlackbaudSecretStore : IBlackbaudSecretStore
     {
         public const string GlobalKey = "__GLOBAL__";
 
-        private readonly string _connectionString;
-        private readonly string _passphrase;
+        private const string GetProc = "dbo.CGOAuthSecrets_Get2";
+        private const string UpsertProc = "dbo.CGOAuthSecrets_Upsert2";
 
-        public SqlBlackbaudSecretStore(string connectionString, string passphrase)
+        // Stable entropy so old records remain decryptable on this machine.
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CheerfulGiverNXT|CGOAuthSecrets|v2");
+
+        private readonly string _connectionString;
+
+        // Use LocalMachine so any Windows user on THIS PC can run the app (fits "Authorize this PC").
+        // If you want per-user isolation, switch to DataProtectionScope.CurrentUser.
+        private const DataProtectionScope Scope = DataProtectionScope.LocalMachine;
+
+        public SqlBlackbaudSecretStore(string connectionString)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-            _passphrase = passphrase ?? throw new ArgumentNullException(nameof(passphrase));
+        }
+
+        private static byte[]? ProtectString(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            var bytes = Encoding.UTF8.GetBytes(value);
+            return ProtectedData.Protect(bytes, Entropy, Scope);
+        }
+
+        private static string? UnprotectString(byte[]? value)
+        {
+            if (value is null || value.Length == 0) return null;
+            var bytes = ProtectedData.Unprotect(value, Entropy, Scope);
+            return Encoding.UTF8.GetString(bytes);
         }
 
         public async Task<BlackbaudSecrets?> GetAsync(SqlConnection conn, string secretKey, CancellationToken ct = default)
         {
-            await using var cmd = new SqlCommand("dbo.CGOAuthSecrets_Get", conn)
+            await using var cmd = new SqlCommand(GetProc, conn)
             {
                 CommandType = CommandType.StoredProcedure
             };
-            cmd.Parameters.AddWithValue("@SecretKey", secretKey);
-            cmd.Parameters.AddWithValue("@Passphrase", _passphrase);
+
+            cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = secretKey });
 
             await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (!await r.ReadAsync(ct).ConfigureAwait(false))
                 return null;
 
-            var access = r["AccessToken"] as string;
-            var refresh = r["RefreshToken"] as string;
+            byte[]? accessEnc = r["AccessTokenEnc"] is DBNull ? null : (byte[]?)r["AccessTokenEnc"];
+            byte[]? refreshEnc = r["RefreshTokenEnc"] is DBNull ? null : (byte[]?)r["RefreshTokenEnc"];
+            byte[]? subKeyEnc = r["SubscriptionKeyEnc"] is DBNull ? null : (byte[]?)r["SubscriptionKeyEnc"];
+
             var tokenType = r["TokenType"] as string ?? "";
             var scope = r["Scope"] as string ?? "";
-            var subKey = r["SubscriptionKey"] as string ?? "";
 
-            if (r["ExpiresAtUtc"] is DBNull)
+            DateTimeOffset expires = DateTimeOffset.MinValue;
+            if (!(r["ExpiresAtUtc"] is DBNull))
+            {
+                var expiresAtUtc = (DateTime)r["ExpiresAtUtc"];
+                expires = new DateTimeOffset(DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Utc));
+            }
+
+            // NOTE: Global row can have null ExpiresAtUtc + no tokens. We still return it so callers can read SubscriptionKey.
+            string access, refresh, subKey;
+            try
+            {
+                access = UnprotectString(accessEnc) ?? "";
+                refresh = UnprotectString(refreshEnc) ?? "";
+                subKey = UnprotectString(subKeyEnc) ?? "";
+            }
+            catch (CryptographicException)
+            {
+                // If the table still contains old SQL ENCRYPTBYPASSPHRASE data (or the DB was restored to a different PC),
+                // DPAPI decryption will fail. Treat as missing so the operator can re-seed (subscription key + re-authorize PC).
                 return null;
-
-            var expiresAtUtc = (DateTime)r["ExpiresAtUtc"];
-            var expires = new DateTimeOffset(DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Utc));
-
-            // If this is the GLOBAL row, access/refresh may be null — caller can handle that.
-            access ??= "";
-            refresh ??= "";
+            }
 
             return new BlackbaudSecrets(
                 AccessToken: access,
@@ -76,23 +121,34 @@ namespace CheerfulGiverNXT.Data
 
         public async Task UpsertAsync(SqlConnection conn, string secretKey, BlackbaudSecrets secrets, CancellationToken ct = default)
         {
-            await using var cmd = new SqlCommand("dbo.CGOAuthSecrets_Upsert", conn)
+            await using var cmd = new SqlCommand(UpsertProc, conn)
             {
                 CommandType = CommandType.StoredProcedure
             };
 
-            cmd.Parameters.AddWithValue("@SecretKey", secretKey);
-            cmd.Parameters.AddWithValue("@Passphrase", _passphrase);
+            cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = secretKey });
 
-            cmd.Parameters.AddWithValue("@AccessToken", string.IsNullOrWhiteSpace(secrets.AccessToken) ? (object)DBNull.Value : secrets.AccessToken);
-            cmd.Parameters.AddWithValue("@RefreshToken", string.IsNullOrWhiteSpace(secrets.RefreshToken) ? (object)DBNull.Value : secrets.RefreshToken);
-            cmd.Parameters.AddWithValue("@ExpiresAtUtc", secrets.ExpiresAtUtc.UtcDateTime);
+            var accessEnc = ProtectString(secrets.AccessToken);
+            var refreshEnc = ProtectString(secrets.RefreshToken);
+            var subKeyEnc = ProtectString(secrets.SubscriptionKey);
 
-            cmd.Parameters.AddWithValue("@TokenType", secrets.TokenType ?? "");
-            cmd.Parameters.AddWithValue("@Scope", secrets.Scope ?? "");
+            cmd.Parameters.Add(new SqlParameter("@AccessTokenEnc", SqlDbType.VarBinary, -1)
+            { Value = (object?)accessEnc ?? DBNull.Value });
 
-            cmd.Parameters.AddWithValue("@SubscriptionKey",
-                string.IsNullOrWhiteSpace(secrets.SubscriptionKey) ? (object)DBNull.Value : secrets.SubscriptionKey);
+            cmd.Parameters.Add(new SqlParameter("@RefreshTokenEnc", SqlDbType.VarBinary, -1)
+            { Value = (object?)refreshEnc ?? DBNull.Value });
+
+            cmd.Parameters.Add(new SqlParameter("@ExpiresAtUtc", SqlDbType.DateTime2)
+            { Value = secrets.ExpiresAtUtc == DateTimeOffset.MinValue ? (object)DBNull.Value : secrets.ExpiresAtUtc.UtcDateTime });
+
+            cmd.Parameters.Add(new SqlParameter("@TokenType", SqlDbType.NVarChar, 50)
+            { Value = (object?)(secrets.TokenType ?? "") ?? "" });
+
+            cmd.Parameters.Add(new SqlParameter("@Scope", SqlDbType.NVarChar, 4000)
+            { Value = (object?)(secrets.Scope ?? "") ?? "" });
+
+            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1)
+            { Value = (object?)subKeyEnc ?? DBNull.Value });
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -103,7 +159,6 @@ namespace CheerfulGiverNXT.Data
             if (global is null) return null;
             return string.IsNullOrWhiteSpace(global.SubscriptionKey) ? null : global.SubscriptionKey;
         }
-
 
         /// <summary>
         /// Convenience overload: opens its own connection and reads the global subscription key.
@@ -117,25 +172,29 @@ namespace CheerfulGiverNXT.Data
 
         public async Task SetGlobalSubscriptionKeyAsync(string subscriptionKey, CancellationToken ct = default)
         {
+            if (string.IsNullOrWhiteSpace(subscriptionKey))
+                throw new ArgumentException("Subscription key is required.", nameof(subscriptionKey));
+
             await using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync(ct).ConfigureAwait(false);
 
-            // Only set SubscriptionKey; leave token fields unchanged by passing NULL for them.
-            await using var cmd = new SqlCommand("dbo.CGOAuthSecrets_Upsert", conn)
+            await using var cmd = new SqlCommand(UpsertProc, conn)
             {
                 CommandType = CommandType.StoredProcedure
             };
 
-            cmd.Parameters.AddWithValue("@SecretKey", GlobalKey);
-            cmd.Parameters.AddWithValue("@Passphrase", _passphrase);
+            cmd.Parameters.Add(new SqlParameter("@SecretKey", SqlDbType.NVarChar, 128) { Value = GlobalKey });
 
-            cmd.Parameters.AddWithValue("@AccessToken", DBNull.Value);
-            cmd.Parameters.AddWithValue("@RefreshToken", DBNull.Value);
-            cmd.Parameters.AddWithValue("@ExpiresAtUtc", DBNull.Value);
-            cmd.Parameters.AddWithValue("@TokenType", DBNull.Value);
-            cmd.Parameters.AddWithValue("@Scope", DBNull.Value);
+            // Leave token fields unchanged by passing NULL for them.
+            cmd.Parameters.Add(new SqlParameter("@AccessTokenEnc", SqlDbType.VarBinary, -1) { Value = DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@RefreshTokenEnc", SqlDbType.VarBinary, -1) { Value = DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@ExpiresAtUtc", SqlDbType.DateTime2) { Value = DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@TokenType", SqlDbType.NVarChar, 50) { Value = DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@Scope", SqlDbType.NVarChar, 4000) { Value = DBNull.Value });
 
-            cmd.Parameters.AddWithValue("@SubscriptionKey", subscriptionKey);
+            var subKeyEnc = ProtectString(subscriptionKey.Trim());
+            cmd.Parameters.Add(new SqlParameter("@SubscriptionKeyEnc", SqlDbType.VarBinary, -1)
+            { Value = (object?)subKeyEnc ?? DBNull.Value });
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
