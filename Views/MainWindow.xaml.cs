@@ -3,6 +3,7 @@ using System;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -66,7 +67,8 @@ namespace CheerfulGiverNXT
                 _ = vm.RefreshAuthPreviewAsync();
         }
 
-        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e)
+        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e
+)
         {
             var result = MessageBox.Show(
                 "No matches found after 3 searches.\n\nWould you like to create a new constituent record?",
@@ -166,6 +168,15 @@ namespace CheerfulGiverNXT
                 TokenCountdownTextBlock.Text = "Token: (none)";
                 return;
             }
+
+            if (token.Length == 0)
+            {
+                ButtonAuthorize.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ButtonAuthorize.Visibility = Visibility.Collapsed;
+            }   
 
             // If token changed (e.g., refresh occurred), recompute expiry from JWT.
             if (!string.Equals(_lastToken, token, StringComparison.Ordinal))

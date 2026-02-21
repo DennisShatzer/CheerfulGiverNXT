@@ -8,6 +8,88 @@
         Title="Create Pledge"
         WindowStartupLocation="CenterOwner">
 
+    <Window.Resources>
+        
+        <!-- Implicit TextBlock: make all text readable by default -->
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+<BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Font.Base">16</sys:Double>
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Input.Height">34</sys:Double>
+        <Thickness x:Key="Input.Padding">10,6,10,6</Thickness>
+        <CornerRadius x:Key="Corner.Button">6</CornerRadius>
+
+        <Style x:Key="LabelText" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InputTextBox" TargetType="{x:Type TextBox}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InputComboBox" TargetType="{x:Type ComboBox}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InputDatePicker" TargetType="{x:Type DatePicker}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+        </Style>
+
+        <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="{x:Type Button}">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource Corner.Button}">
+                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True"
+                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.92"/></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style x:Key="Button.Primary" TargetType="{x:Type Button}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FF0078D4"/>
+            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
+
+        <Style x:Key="Button.Secondary" TargetType="{x:Type Button}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FFF3F3F3"/>
+            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -21,17 +103,17 @@
             <StackPanel>
                 <!-- Visible only when NewConstituent == true (set by code-behind) -->
                 <Border x:Name="NewConstituentBanner"
-                Background="#D1FAE5"
-                BorderBrush="#A7F3D0"
-                BorderThickness="1"
-                CornerRadius="4"
-                Padding="8"
-                Margin="0,0,0,8"
-                Visibility="Collapsed">
-            <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
-               FontWeight="SemiBold"
-               Foreground="#065F46"/>
-</Border>
+                        Background="#D1FAE5"
+                        BorderBrush="#A7F3D0"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8"
+                        Margin="0,0,0,8"
+                        Visibility="Collapsed">
+                    <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
+                               FontWeight="SemiBold"
+                               Foreground="#065F46"/>
+                </Border>
 
                 <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
                 <TextBlock Text="{Binding ConstituentSummary}"
@@ -40,12 +122,10 @@
             </StackPanel>
         </Border>
 
-        <!-- Entry fields: Amount + Frequency (+ Sponsorship when eligible) -->
+        <!-- Entry fields -->
         <Grid Grid.Row="1" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <!-- Label column -->
                 <ColumnDefinition Width="Auto" MinWidth="110"/>
-                <!-- Field column -->
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -58,64 +138,71 @@
 
             <!-- Amount -->
             <TextBlock Grid.Row="0" Grid.Column="0"
+                       Style="{StaticResource LabelText}"
                        Text="Amount:"
                        HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
                        Margin="0,0,8,8"/>
 
             <TextBox x:Name="AmountTextBox"
                      Grid.Row="0" Grid.Column="1"
+                     Style="{StaticResource InputTextBox}"
                      Text="{Binding AmountText, UpdateSourceTrigger=PropertyChanged}"
                      Margin="0,0,0,8"/>
 
             <!-- Frequency -->
             <TextBlock Grid.Row="1" Grid.Column="0"
+                       Style="{StaticResource LabelText}"
                        Text="Frequency:"
                        HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
                        Margin="0,0,8,8"/>
 
             <ComboBox Grid.Row="1" Grid.Column="1"
+                      Style="{StaticResource InputComboBox}"
                       ItemsSource="{Binding FrequencyPresets}"
                       SelectedItem="{Binding SelectedPreset}"
                       DisplayMemberPath="Display"
                       Margin="0,0,0,8"/>
 
-            <!-- Sponsor Tier (appears when Amount qualifies via thresholds) -->
+            <!-- Sponsor Tier -->
             <TextBlock Grid.Row="2" Grid.Column="0"
+                       Style="{StaticResource LabelText}"
                        Text="Sponsor Tier:"
                        HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0" Style="{StaticResource CG.ShowWhenSponsorshipSelector.TextBlock}" />
+                       Margin="0,0,8,0"
+                       Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
 
             <ComboBox Grid.Row="2" Grid.Column="1"
+                      Style="{StaticResource InputComboBox}"
                       ItemsSource="{Binding EligibleSponsorshipOptions}"
                       SelectedItem="{Binding SelectedSponsorshipOption}"
                       DisplayMemberPath="Display"
-                      Margin="0" Style="{StaticResource CG.ShowWhenSponsorshipSelector.ComboBox}" />
+                      Margin="0"
+                      Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
 
-            <!-- Sponsor date (shown only when Sponsorship is shown) -->
+            <!-- Sponsor date -->
             <TextBlock Grid.Row="3" Grid.Column="0"
+                       Style="{StaticResource LabelText}"
                        Text="Sponsor date:"
                        HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
-                       Margin="0,6,8,0" Style="{StaticResource CG.ShowWhenSponsorshipSelector.TextBlock}" />
-
+                       Margin="0,6,8,0"
+                       Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
 
             <DatePicker Grid.Row="3" Grid.Column="1"
+                        Style="{StaticResource InputDatePicker}"
                         VerticalAlignment="Center"
                         SelectedDate="{Binding SponsorshipDate}"
-                        Margin="0,6,0,0" Style="{StaticResource CG.ShowWhenSponsorshipSelector.DatePicker}" />
-
+                        Margin="0,6,0,0"
+                        Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
         </Grid>
 
-        <!-- Comments (optional) -->
+        <!-- Comments -->
         <TextBox Grid.Row="2"
+                 Style="{StaticResource InputTextBox}"
+                 Height="160"
                  Margin="0,12,0,0"
                  Text="{Binding Comments, UpdateSourceTrigger=PropertyChanged}"
                  AcceptsReturn="True"
                  VerticalScrollBarVisibility="Auto"
-                 Height="160"
                  ToolTip="Comments (optional)"/>
 
         <!-- Actions -->
@@ -127,11 +214,13 @@
                        TextWrapping="Wrap"/>
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Save" Style="{StaticResource CG.Button.Primary}"
+                <Button Content="Save"
+                        Style="{StaticResource Button.Primary}"
                         Margin="8,0,0,0"
                         Command="{Binding SaveCommand}"
                         IsEnabled="{Binding CanSave}"/>
                 <Button Content="Cancel"
+                        Style="{StaticResource Button.Secondary}"
                         Margin="8,0,0,0"
                         Click="Cancel_Click"/>
             </StackPanel>

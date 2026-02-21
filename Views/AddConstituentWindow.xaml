@@ -7,7 +7,80 @@
         WindowStartupLocation="CenterOwner">
 
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        
+        <!-- Implicit TextBlock: make all text readable by default -->
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+<BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Font.Base">16</sys:Double>
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Input.Height">34</sys:Double>
+        <Thickness x:Key="Input.Padding">10,6,10,6</Thickness>
+        <CornerRadius x:Key="Corner.Button">6</CornerRadius>
+
+        <Style x:Key="LabelText" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InputTextBox" TargetType="{x:Type TextBox}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InputMultiline" TargetType="{x:Type TextBox}" BasedOn="{StaticResource InputTextBox}">
+            <Setter Property="Height" Value="90"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        </Style>
+
+        <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="{x:Type Button}">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource Corner.Button}">
+                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True"
+                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.92"/></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style x:Key="Button.Primary" TargetType="{x:Type Button}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FF0078D4"/>
+            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
+
+        <Style x:Key="Button.Secondary" TargetType="{x:Type Button}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FFF3F3F3"/>
+            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="12">
@@ -42,59 +115,82 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-	            <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Type"/>
-	            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-	                <RadioButton Content="Individual"
-	                             Margin="0,0,16,8"
-	                             VerticalAlignment="Center"
-	                             IsChecked="{Binding IsIndividual, Mode=TwoWay}"
-	                             Checked="ConstituentType_Checked"/>
-	                <RadioButton Content="Organization"
-	                             Margin="0,0,0,8"
-	                             VerticalAlignment="Center"
-	                             IsChecked="{Binding IsOrganization, Mode=TwoWay}"
-	                             Checked="ConstituentType_Checked"/>
-	            </StackPanel>
+            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" Text="Type"/>
+            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                <RadioButton Content="Individual"
+                             Margin="0,0,16,8"
+                             VerticalAlignment="Center"
+                             IsChecked="{Binding IsIndividual, Mode=TwoWay}"
+                             Checked="ConstituentType_Checked"/>
+                <RadioButton Content="Organization"
+                             Margin="0,0,0,8"
+                             VerticalAlignment="Center"
+                             IsChecked="{Binding IsOrganization, Mode=TwoWay}"
+                             Checked="ConstituentType_Checked"/>
+            </StackPanel>
 
-	            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Name"/>
-	            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Visibility="{Binding IsIndividual, Converter={StaticResource BoolToVis}}">
-	                <TextBox x:Name="FirstNameTextBox" Width="170" Margin="0,0,8,8" Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}"/>
-	                <TextBox x:Name="LastNameTextBox" Width="240" Margin="0,0,0,8" Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}"/>
-	            </StackPanel>
-	            <TextBox x:Name="OrganizationNameTextBox"
-	                     Grid.Row="1"
-	                     Grid.Column="1"
-	                     Margin="0,0,0,8"
-	                     Text="{Binding OrganizationName, UpdateSourceTrigger=PropertyChanged}"
-	                     Visibility="{Binding IsOrganization, Converter={StaticResource BoolToVis}}"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" Text="Name"/>
+            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal"
+                        Visibility="{Binding IsIndividual, Converter={StaticResource BoolToVis}}">
+                <TextBox x:Name="FirstNameTextBox" Style="{StaticResource InputTextBox}" Width="170" Margin="0,0,8,8"
+                         Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox x:Name="LastNameTextBox" Style="{StaticResource InputTextBox}" Width="240" Margin="0,0,0,8"
+                         Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}"/>
+            </StackPanel>
 
-	            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Email"/>
-	            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBox x:Name="OrganizationNameTextBox"
+                     Grid.Row="1" Grid.Column="1"
+                     Style="{StaticResource InputTextBox}"
+                     Margin="0,0,0,8"
+                     Text="{Binding OrganizationName, UpdateSourceTrigger=PropertyChanged}"
+                     Visibility="{Binding IsOrganization, Converter={StaticResource BoolToVis}}"/>
 
-	            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Phone"/>
-	            <TextBox Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" Text="Email"/>
+            <TextBox Grid.Row="2" Grid.Column="1" Style="{StaticResource InputTextBox}" Margin="0,0,0,8"
+                     Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}"/>
 
-	            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Top" Text="Address"/>
-	            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,8">
-                <TextBox Margin="0,0,0,6" Text="{Binding AddressLine1, UpdateSourceTrigger=PropertyChanged}"/>
-                <TextBox Margin="0,0,0,6" Text="{Binding AddressLine2, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" Text="Phone"/>
+            <TextBox Grid.Row="3" Grid.Column="1" Style="{StaticResource InputTextBox}" Margin="0,0,0,8"
+                     Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"/>
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" VerticalAlignment="Top" Text="Address"/>
+            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,8">
+                <TextBox Style="{StaticResource InputTextBox}" Margin="0,0,0,6"
+                         Text="{Binding AddressLine1, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox Style="{StaticResource InputTextBox}" Margin="0,0,0,6"
+                         Text="{Binding AddressLine2, UpdateSourceTrigger=PropertyChanged}"/>
                 <StackPanel Orientation="Horizontal">
-                    <TextBox Width="220" Margin="0,0,8,0" Text="{Binding City, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBox Width="60" Margin="0,0,8,0" Text="{Binding State, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBox Width="90" Text="{Binding PostalCode, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Style="{StaticResource InputTextBox}" Width="220" Margin="0,0,8,0"
+                             Text="{Binding City, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Style="{StaticResource InputTextBox}" Width="60" Margin="0,0,8,0"
+                             Text="{Binding State, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Style="{StaticResource InputTextBox}" Width="90"
+                             Text="{Binding PostalCode, UpdateSourceTrigger=PropertyChanged}"/>
                 </StackPanel>
             </StackPanel>
 
-	            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Notes"/>
-	            <TextBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"/>
+            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,8" Text="Notes"/>
+            <TextBox Grid.Row="5" Grid.Column="1" Style="{StaticResource InputMultiline}" Margin="0,0,0,8"
+                     Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"/>
 
-	            <TextBlock Grid.Row="6" Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center" Text="Display"/>
-	            <TextBlock Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Text="{Binding DisplayName}" FontStyle="Italic"/>
+            <TextBlock Grid.Row="6" Grid.Column="0" Style="{StaticResource LabelText}" Margin="0,0,8,0" Text="Display"/>
+            <TextBlock Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Text="{Binding DisplayName}" FontStyle="Italic"/>
         </Grid>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="SaveButton" Width="100" Margin="0,0,8,0" IsDefault="True" Content="Save" Style="{StaticResource CG.Button.Primary}" Click="Save_Click"/>
-            <Button x:Name="CancelButton" Width="100" IsCancel="True" Content="Cancel" Click="Cancel_Click"/>
+            <Button x:Name="SaveButton"
+                    Style="{StaticResource Button.Primary}"
+                    Width="100"
+                    Margin="0,0,8,0"
+                    IsDefault="True"
+                    Content="Save"
+                    Click="Save_Click"/>
+            <Button x:Name="CancelButton"
+                    Style="{StaticResource Button.Secondary}"
+                    Width="100"
+                    IsCancel="True"
+                    Content="Cancel"
+                    Click="Cancel_Click"/>
         </StackPanel>
     </Grid>
 </Window>
