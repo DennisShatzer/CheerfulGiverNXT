@@ -27,14 +27,23 @@ public interface IGiftWorkflowStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Returns the dates that are fully booked for the given campaign in dbo.CGDatesSponsored.
-    /// A date is considered FULL if a DayPart = 'FULL' row exists, OR if both AM and PM exist.
-    /// Cancelled rows (IsCancelled = 1) are ignored.
+    /// Returns dates that are fully booked for sponsorship (a FULL row exists, or both AM and PM exist)
+    /// in CGDatesSponsored for the given date range. If <paramref name="campaignRecordId"/> is null,
+    /// returns fully booked dates across all campaigns.
     /// </summary>
     Task<DateTime[]> ListFullyBookedSponsorshipDatesAsync(
-        int campaignRecordId,
+        int? campaignRecordId,
         DateTime startDate,
         DateTime endDate,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns reserved DayPart values (FULL/AM/PM) for a specific SponsoredDate.
+    /// If <paramref name="campaignRecordId"/> is null, returns reservations across all campaigns.
+    /// </summary>
+    Task<string[]> ListReservedDayPartsAsync(
+        int? campaignRecordId,
+        DateTime sponsoredDate,
         CancellationToken ct = default);
 }
 
@@ -163,59 +172,93 @@ ORDER BY COALESCE(g.PledgeDate, CONVERT(date, g.CreatedAtUtc)) DESC,
         return items.ToArray();
     }
 
+
     public async Task<DateTime[]> ListFullyBookedSponsorshipDatesAsync(
-        int campaignRecordId,
+        int? campaignRecordId,
         DateTime startDate,
         DateTime endDate,
         CancellationToken ct = default)
     {
-        if (campaignRecordId <= 0) return Array.Empty<DateTime>();
-
-        // Normalize to dates (SQL column is [date])
         var start = startDate.Date;
         var end = endDate.Date;
-        if (end < start) (start, end) = (end, start);
+        if (end < start)
+            (start, end) = (end, start);
 
-        try
-        {
-            await using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync(ct).ConfigureAwait(false);
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
 
-            const string sql = @"
+        const string sql = @"
+WITH x AS (
+    SELECT
+        SponsoredDate,
+        MAX(CASE WHEN DayPart = N'FULL' THEN 1 ELSE 0 END) AS HasFull,
+        MAX(CASE WHEN DayPart = N'AM'   THEN 1 ELSE 0 END) AS HasAM,
+        MAX(CASE WHEN DayPart = N'PM'   THEN 1 ELSE 0 END) AS HasPM
+    FROM dbo.CGDatesSponsored
+    WHERE IsCancelled = 0
+      AND SponsoredDate >= @StartDate
+      AND SponsoredDate <= @EndDate
+      AND (@CampaignRecordId IS NULL OR CampaignRecordId = @CampaignRecordId)
+    GROUP BY SponsoredDate
+)
 SELECT SponsoredDate
-FROM dbo.CGDatesSponsored
-WHERE CampaignRecordId = @CampaignRecordId
-  AND SponsoredDate >= @StartDate
-  AND SponsoredDate <= @EndDate
-  AND IsCancelled = 0
-GROUP BY SponsoredDate
-HAVING SUM(CASE WHEN DayPart = N'FULL' THEN 1 ELSE 0 END) > 0
-    OR (SUM(CASE WHEN DayPart = N'AM' THEN 1 ELSE 0 END) > 0
-        AND SUM(CASE WHEN DayPart = N'PM' THEN 1 ELSE 0 END) > 0)
+FROM x
+WHERE HasFull = 1 OR (HasAM = 1 AND HasPM = 1)
 ORDER BY SponsoredDate;";
 
-            await using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignRecordId });
-            cmd.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date) { Value = start });
-            cmd.Parameters.Add(new SqlParameter("@EndDate", SqlDbType.Date) { Value = end });
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date) { Value = start });
+        cmd.Parameters.Add(new SqlParameter("@EndDate", SqlDbType.Date) { Value = end });
+        cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int)
+        { Value = (object?)campaignRecordId ?? DBNull.Value });
 
-            var dates = new List<DateTime>();
-
-            await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-            while (await r.ReadAsync(ct).ConfigureAwait(false))
-            {
-                if (r[0] is DBNull) continue;
-                dates.Add(((DateTime)r[0]).Date);
-            }
-
-            return dates.ToArray();
-        }
-        catch
+        var list = new List<DateTime>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
         {
-            // If CGDatesSponsored isn't present or query fails, treat as "no blackout".
-            return Array.Empty<DateTime>();
+            if (r[0] is DateTime d)
+                list.Add(d.Date);
         }
+
+        return list.ToArray();
     }
+
+    public async Task<string[]> ListReservedDayPartsAsync(
+        int? campaignRecordId,
+        DateTime sponsoredDate,
+        CancellationToken ct = default)
+    {
+        var d = sponsoredDate.Date;
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        const string sql = @"
+SELECT DayPart
+FROM dbo.CGDatesSponsored
+WHERE IsCancelled = 0
+  AND SponsoredDate = @SponsoredDate
+  AND (@CampaignRecordId IS NULL OR CampaignRecordId = @CampaignRecordId);";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@SponsoredDate", SqlDbType.Date) { Value = d });
+        cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int)
+        { Value = (object?)campaignRecordId ?? DBNull.Value });
+
+        var list = new List<string>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var s = (r[0] as string ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(s))
+                list.Add(s.ToUpperInvariant());
+        }
+
+        return list
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
 
     private static async Task EnsureSchemaPresentAsync(SqlConnection conn, CancellationToken ct)
     {

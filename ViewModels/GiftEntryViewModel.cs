@@ -74,6 +74,23 @@ namespace CheerfulGiverNXT.ViewModels
         // Dates that are fully booked (FULL, or both AM and PM) for the current campaign.
         public ObservableCollection<DateTime> FullyBookedSponsorshipDates { get; } = new();
 
+        private string[] _reservedDayParts = Array.Empty<string>();
+        private int _reservedDayPartsLoadVersion;
+
+        private string _sponsorshipAvailabilityStatus = "";
+        public string SponsorshipAvailabilityStatus
+        {
+            get => _sponsorshipAvailabilityStatus;
+            private set { _sponsorshipAvailabilityStatus = value; OnPropertyChanged(); }
+        }
+
+        private bool _hasAvailableSponsorshipSlots = true;
+        public bool HasAvailableSponsorshipSlots
+        {
+            get => _hasAvailableSponsorshipSlots;
+            private set { _hasAvailableSponsorshipSlots = value; OnPropertyChanged(); }
+        }
+
         private int _fullyBookedLoadVersion;
 
         private int? GetCampaignRecordIdForSponsorship()
@@ -94,18 +111,11 @@ namespace CheerfulGiverNXT.ViewModels
             try
             {
                 var campaignRecordId = GetCampaignRecordIdForSponsorship();
-                if (campaignRecordId is null)
-                {
-                    if (version != _fullyBookedLoadVersion) return;
-                    FullyBookedSponsorshipDates.Clear();
-                    return;
-                }
-
                 var start = DateTime.Today.Date;
                 var end = start.AddMonths(18).Date;
 
                 var dates = await _workflowStore
-                    .ListFullyBookedSponsorshipDatesAsync(campaignRecordId.Value, start, end)
+                    .ListFullyBookedSponsorshipDatesAsync(campaignRecordId, start, end)
                     .ConfigureAwait(true);
 
                 if (version != _fullyBookedLoadVersion) return;
@@ -118,6 +128,38 @@ namespace CheerfulGiverNXT.ViewModels
             {
                 if (version != _fullyBookedLoadVersion) return;
                 FullyBookedSponsorshipDates.Clear();
+            }
+        }
+
+        private async Task ReloadReservedDayPartsForSelectedDateAsync()
+        {
+            var version = Interlocked.Increment(ref _reservedDayPartsLoadVersion);
+
+            try
+            {
+                if (!SponsorshipDate.HasValue)
+                {
+                    if (version != _reservedDayPartsLoadVersion) return;
+                    _reservedDayParts = Array.Empty<string>();
+                    ApplySponsorshipOptionAvailability();
+                    return;
+                }
+
+                var campaignRecordId = GetCampaignRecordIdForSponsorship();
+                var parts = await _workflowStore
+                    .ListReservedDayPartsAsync(campaignRecordId, SponsorshipDate.Value.Date)
+                    .ConfigureAwait(true);
+
+                if (version != _reservedDayPartsLoadVersion) return;
+
+                _reservedDayParts = parts ?? Array.Empty<string>();
+                ApplySponsorshipOptionAvailability();
+            }
+            catch
+            {
+                if (version != _reservedDayPartsLoadVersion) return;
+                _reservedDayParts = Array.Empty<string>();
+                ApplySponsorshipOptionAvailability();
             }
         }
 
@@ -361,6 +403,7 @@ namespace CheerfulGiverNXT.ViewModels
                 OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
                 _ = ReloadExistingCampaignGiftsAsync();
                 _ = ReloadFullyBookedSponsorshipDatesAsync();
+                _ = ReloadReservedDayPartsForSelectedDateAsync();
             }
         }
 
@@ -405,13 +448,19 @@ namespace CheerfulGiverNXT.ViewModels
             }
         }
 
-        public bool ShowSponsorshipSelector => EligibleSponsorshipOptions.Length > 0;
+        // Sponsorship UI is shown when the gift amount qualifies (regardless of current date availability).
+        public bool ShowSponsorshipSelector => ComputeEligibleSponsorshipOptionsByAmount().Length > 0;
 
         private SponsorshipOption? _selectedSponsorshipOption;
         public SponsorshipOption? SelectedSponsorshipOption
         {
             get => _selectedSponsorshipOption;
-            set { _selectedSponsorshipOption = value; OnPropertyChanged(); }
+            set
+            {
+                _selectedSponsorshipOption = value;
+                OnPropertyChanged();
+                RefreshCanSave();
+            }
         }
 
         private DateTime? _sponsorshipDate;
@@ -426,6 +475,9 @@ namespace CheerfulGiverNXT.ViewModels
                 if (_sponsorshipDate == value) return;
                 _sponsorshipDate = value;
                 OnPropertyChanged();
+
+                // When the date changes, reload reservations and re-filter available tiers.
+                _ = ReloadReservedDayPartsForSelectedDateAsync();
             }
         }
 
@@ -492,61 +544,131 @@ namespace CheerfulGiverNXT.ViewModels
                 OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
 
             _ = ReloadExistingCampaignGiftsAsync();
-                _ = ReloadFullyBookedSponsorshipDatesAsync();
-RefreshSponsorshipEligibility();
+            _ = ReloadFullyBookedSponsorshipDatesAsync();
+            _ = ReloadReservedDayPartsForSelectedDateAsync();
+            RefreshSponsorshipEligibility();
             RefreshCanSave();
         }
 
-        private void RefreshSponsorshipEligibility()
+        private SponsorshipOption[] ComputeEligibleSponsorshipOptionsByAmount()
         {
             if (!TryParseAmount(out var amt) || amt <= 0m)
+                return Array.Empty<SponsorshipOption>();
+
+            if (amt >= 2000m) return FullDaySponsorshipOptions;
+            if (amt >= 1000m) return HalfDaySponsorshipOptions;
+            return Array.Empty<SponsorshipOption>();
+        }
+
+        private static string? GetDesiredDayPart(SponsorshipOption opt)
+        {
+            var s = (opt.Display ?? "").Trim();
+            if (s.Length == 0) return null;
+            if (s.IndexOf("full", StringComparison.OrdinalIgnoreCase) >= 0) return "FULL";
+            if (s.IndexOf("am", StringComparison.OrdinalIgnoreCase) >= 0) return "AM";
+            if (s.IndexOf("pm", StringComparison.OrdinalIgnoreCase) >= 0) return "PM";
+            return null;
+        }
+
+        private bool IsDayPartAvailable(string desiredDayPart)
+        {
+            // FULL booked blocks everything.
+            if (_reservedDayParts.Any(p => string.Equals(p, "FULL", StringComparison.OrdinalIgnoreCase)))
+                return false;
+
+            if (string.Equals(desiredDayPart, "FULL", StringComparison.OrdinalIgnoreCase))
+            {
+                // Full day requires neither AM nor PM to be reserved.
+                return !_reservedDayParts.Any(p => string.Equals(p, "AM", StringComparison.OrdinalIgnoreCase)
+                                               || string.Equals(p, "PM", StringComparison.OrdinalIgnoreCase));
+            }
+
+            // Half-day AM/PM requires that exact day-part not be reserved.
+            return !_reservedDayParts.Any(p => string.Equals(p, desiredDayPart, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void ApplySponsorshipOptionAvailability()
+        {
+            var baseEligible = ComputeEligibleSponsorshipOptionsByAmount();
+
+            if (baseEligible.Length == 0)
             {
                 EligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
                 SelectedSponsorshipOption = null;
                 SponsorshipDate = null;
+                SponsorshipAvailabilityStatus = "";
+                HasAvailableSponsorshipSlots = true;
                 return;
             }
 
-            SponsorshipOption[] eligible;
-            if (amt >= 2000m)
+            // Ensure a date exists once eligible.
+            if (SponsorshipDate is null)
+                SponsorshipDate = DateTime.Today;
+
+            // If we have a selected date, filter options by what's reserved on that date.
+            var filtered = baseEligible
+                .Where(o =>
+                {
+                    var dp = GetDesiredDayPart(o);
+                    if (dp is null) return true; // unknown -> don't block
+                    return IsDayPartAvailable(dp);
+                })
+                .ToArray();
+
+            EligibleSponsorshipOptions = filtered;
+
+            if (filtered.Length == 0)
             {
-                eligible = FullDaySponsorshipOptions;
+                SelectedSponsorshipOption = null;
+                HasAvailableSponsorshipSlots = false;
+                SponsorshipAvailabilityStatus = "No sponsorship slots are available for the selected date.";
+                RefreshCanSave();
+                return;
             }
-            else if (amt >= 1000m)
+
+            HasAvailableSponsorshipSlots = true;
+
+            // Keep selection if still available, else default to first.
+            if (_selectedSponsorshipOption is null || !filtered.Any(x => x.Display == _selectedSponsorshipOption.Display))
+                SelectedSponsorshipOption = filtered[0];
+
+            // Friendly status.
+            if (SponsorshipDate.HasValue)
             {
-                eligible = HalfDaySponsorshipOptions;
+                var taken = _reservedDayParts.Length == 0 ? "None" : string.Join(", ", _reservedDayParts.OrderBy(x => x));
+                var avail = string.Join(", ", filtered.Select(x => x.Display));
+                SponsorshipAvailabilityStatus = $"Taken: {taken}. Available: {avail}.";
             }
             else
             {
-                eligible = Array.Empty<SponsorshipOption>();
+                SponsorshipAvailabilityStatus = "";
             }
 
-            EligibleSponsorshipOptions = eligible;
-
-            if (eligible.Length == 0)
-            {
-                SelectedSponsorshipOption = null;
-                SponsorshipDate = null;
-                return;
-            }
-
-            // Keep selection if still eligible, else default to first eligible.
-            if (_selectedSponsorshipOption is null || !eligible.Any(x => x.Display == _selectedSponsorshipOption.Display))
-                SelectedSponsorshipOption = eligible[0];
-
-            // If sponsorship becomes eligible and no date has been chosen yet, default to today.
-            if (SponsorshipDate is null)
-                SponsorshipDate = DateTime.Today;
+            RefreshCanSave();
         }
+
+        private void RefreshSponsorshipEligibility() => ApplySponsorshipOptionAvailability();
 
         private void RefreshCanSave()
         {
-            CanSave = !IsBusy
-                      && TryParseAmount(out var amt) && amt > 0m
-                      && PledgeDate.HasValue
-                      && FirstInstallmentDate.HasValue
-                      && TryParseInstallments(out var n) && n > 0
-                      && !string.IsNullOrWhiteSpace(FundIdText);
+            var baseOk = !IsBusy
+                         && TryParseAmount(out var amt) && amt > 0m
+                         && PledgeDate.HasValue
+                         && FirstInstallmentDate.HasValue
+                         && TryParseInstallments(out var n) && n > 0
+                         && !string.IsNullOrWhiteSpace(FundIdText);
+
+            // If the gift amount makes sponsorship selectable, require the operator to pick
+            // an available tier and date.
+            bool sponsorshipOk = true;
+            if (ShowSponsorshipSelector)
+            {
+                sponsorshipOk = SponsorshipDate.HasValue
+                                && SelectedSponsorshipOption is not null
+                                && EligibleSponsorshipOptions.Any(x => x.Display == SelectedSponsorshipOption.Display);
+            }
+
+            CanSave = baseOk && sponsorshipOk;
         }
 
         private static bool TryParseInt(string? s, out int value) =>
@@ -564,6 +686,49 @@ RefreshSponsorshipEligibility();
             if (!FirstInstallmentDate.HasValue) { StatusText = "Select a first installment date."; return; }
             if (!TryParseInstallments(out var installments) || installments <= 0) { StatusText = "# of installments must be a whole number."; return; }
             if (string.IsNullOrWhiteSpace(FundIdText)) { StatusText = "Fund ID is required."; return; }
+
+            // Sponsorship slot validation (prevents saving into an already-booked date/slot).
+            if (ShowSponsorshipSelector)
+            {
+                if (!SponsorshipDate.HasValue)
+                {
+                    StatusText = "Select a sponsorship date.";
+                    return;
+                }
+
+                if (SelectedSponsorshipOption is null)
+                {
+                    StatusText = "Select a sponsor tier.";
+                    return;
+                }
+
+                var desired = GetDesiredDayPart(SelectedSponsorshipOption);
+                if (!string.IsNullOrWhiteSpace(desired))
+                {
+                    try
+                    {
+                        var campaignRecordId = GetCampaignRecordIdForSponsorship();
+                        var reserved = await _workflowStore
+                            .ListReservedDayPartsAsync(campaignRecordId, SponsorshipDate.Value.Date)
+                            .ConfigureAwait(true);
+
+                        _reservedDayParts = reserved ?? Array.Empty<string>();
+                        ApplySponsorshipOptionAvailability();
+
+                        if (!IsDayPartAvailable(desired))
+                        {
+                            StatusText = "That sponsorship date is already booked. Please choose another date or tier.";
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        // If we can't verify availability, fail closed for sponsorship.
+                        StatusText = "Unable to verify sponsorship availability. Try again.";
+                        return;
+                    }
+                }
+            }
 
             // Update workflow draft BEFORE attempting the API.
             _workflow.Gift.Amount = amount;
