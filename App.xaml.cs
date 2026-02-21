@@ -29,17 +29,22 @@ namespace CheerfulGiverNXT
         public static RenxtConstituentLookupService ConstituentService { get; private set; } = null!;
         public static RenxtGiftServer GiftService { get; private set; } = null!;
 
+        /// <summary>NEW: workflow persistence into SQL Express (same DB as secrets).</summary>
+        public static IGiftWorkflowStore GiftWorkflowStore { get; private set; } = null!;
+
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
             try
             {
-                var sqlConnStr = ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString
+                var sqlConnStr =
+                    ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString
                     ?? throw new InvalidOperationException("Missing connection string 'CheerfulGiver' in App.config.");
 
                 // ClientId is not secret; keep it in App.config.
-                var clientId = ConfigurationManager.AppSettings["BlackbaudClientId"]
+                var clientId =
+                    ConfigurationManager.AppSettings["BlackbaudClientId"]
                     ?? throw new InvalidOperationException("Missing appSetting BlackbaudClientId in App.config.");
 
                 SecretStore = new SqlBlackbaudSecretStore(sqlConnStr);
@@ -51,11 +56,19 @@ namespace CheerfulGiverNXT
                 TokenProvider = new BlackbaudMachineTokenProvider(sqlConnStr, SecretStore, clientId, clientSecret);
 
                 var handler = new BlackbaudAuthHandler(TokenProvider) { InnerHandler = new HttpClientHandler() };
-                BlackbaudApiHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.sky.blackbaud.com/") };
-                BlackbaudApiHttp.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                BlackbaudApiHttp = new HttpClient(handler)
+                {
+                    BaseAddress = new Uri("https://api.sky.blackbaud.com/")
+                };
+                BlackbaudApiHttp.DefaultRequestHeaders.Accept.Add(
+                    new MediaTypeWithQualityHeaderValue("application/json"));
 
                 ConstituentService = new RenxtConstituentLookupService(BlackbaudApiHttp);
                 GiftService = new RenxtGiftServer(BlackbaudApiHttp);
+
+                // NEW: workflow persistence store
+                GiftWorkflowStore = new SqlGiftWorkflowStore(sqlConnStr);
 
                 // Show main window (no StartupUri in App.xaml)
                 var main = new MainWindow();
@@ -74,7 +87,8 @@ namespace CheerfulGiverNXT
             if (!string.IsNullOrWhiteSpace(existing))
                 return;
 
-            var entered = PromptForSecret("Enter Blackbaud Subscription Key",
+            var entered = PromptForSecret(
+                "Enter Blackbaud Subscription Key",
                 "This app needs your Blackbaud SKY API subscription key to call the API.\n" +
                 "It will be stored encrypted (DPAPI) in your local SQL Express database under __GLOBAL__.");
 
@@ -90,7 +104,8 @@ namespace CheerfulGiverNXT
             if (!string.IsNullOrWhiteSpace(existing))
                 return existing!;
 
-            var entered = PromptForSecret("Enter Blackbaud OAuth Client Secret",
+            var entered = PromptForSecret(
+                "Enter Blackbaud OAuth Client Secret",
                 "To enable 'Authorize this PC once' and automatic token refresh,\n" +
                 "this app uses the confidential Authorization Code flow.\n\n" +
                 "Enter your Blackbaud application client_secret (Primary application secret).\n" +
@@ -123,12 +138,14 @@ namespace CheerfulGiverNXT
             var result = win.ShowDialog();
             if (result == true)
                 return pb.Password;
+
             return null;
         }
 
         private static UIElement BuildSecretPromptContent(string message, out PasswordBox pb, out Button okBtn)
         {
             var root = new Grid { Margin = new Thickness(14) };
+
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -146,11 +163,18 @@ namespace CheerfulGiverNXT
             Grid.SetRow(pb, 1);
             root.Children.Add(pb);
 
-            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var btnPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
             okBtn = new Button { Content = "OK", Width = 90, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
             var cancel = new Button { Content = "Cancel", Width = 90, IsCancel = true };
+
             btnPanel.Children.Add(okBtn);
             btnPanel.Children.Add(cancel);
+
             Grid.SetRow(btnPanel, 2);
             root.Children.Add(btnPanel);
 

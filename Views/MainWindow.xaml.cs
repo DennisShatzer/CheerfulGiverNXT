@@ -1,4 +1,5 @@
 using CheerfulGiverNXT.ViewModels;
+using CheerfulGiverNXT.Workflow;
 using System;
 using System.Text;
 using System.Text.Json;
@@ -11,8 +12,6 @@ namespace CheerfulGiverNXT
 {
     public partial class MainWindow : Window
     {
-        // If your refresh logic kicks in earlier/later, adjust this to match.
-        // Example: if you refresh exactly at expiry, set to TimeSpan.Zero.
         private static readonly TimeSpan RefreshLeadTime = TimeSpan.FromMinutes(5);
 
         private readonly DispatcherTimer _tokenCountdownTimer;
@@ -27,12 +26,10 @@ namespace CheerfulGiverNXT
             DataContext = vm;
             vm.AddConstituentRequested += Vm_AddConstituentRequested;
 
-            // Admin shortcut: Ctrl+Shift+S opens the Secrets/Admin screen.
             PreviewKeyDown += MainWindow_PreviewKeyDown;
 
             Loaded += async (_, __) =>
             {
-                // Put the cursor in the search box when the window opens.
                 await Dispatcher.InvokeAsync(() =>
                 {
                     SearchTextBox.Focus();
@@ -40,12 +37,13 @@ namespace CheerfulGiverNXT
                     SearchTextBox.SelectAll();
                 }, DispatcherPriority.Input);
 
-                // Populate the read-only auth preview fields before the operator does anything.
                 await vm.RefreshAuthPreviewAsync();
             };
 
-            // Start a UI timer that shows "refresh in mm:ss" based on JWT exp.
-            _tokenCountdownTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
+            _tokenCountdownTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
             _tokenCountdownTimer.Tick += (_, __) => UpdateTokenCountdown();
             _tokenCountdownTimer.Start();
 
@@ -62,13 +60,11 @@ namespace CheerfulGiverNXT
             var win = new AdminSecretsWindow { Owner = this };
             win.ShowDialog();
 
-            // Secrets may have been updated; refresh the preview fields.
             if (DataContext is ConstituentLookupTestViewModel vm)
                 _ = vm.RefreshAuthPreviewAsync();
         }
 
-        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e
-)
+        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e)
         {
             var result = MessageBox.Show(
                 "No matches found after 3 searches.\n\nWould you like to create a new constituent record?",
@@ -92,7 +88,6 @@ namespace CheerfulGiverNXT
                 else
                     vm.StatusText = $"Created constituent {win.DraftDisplayName}.";
 
-                // Helpful default: populate the search box with the new name and run a search.
                 vm.SearchText = win.DraftDisplayName;
                 if (vm.SearchCommand.CanExecute(null))
                     vm.SearchCommand.Execute(null);
@@ -131,17 +126,25 @@ namespace CheerfulGiverNXT
             {
                 Mouse.OverrideCursor = Cursors.Wait;
 
-                var funds = await vm.LookupService.GetContributedFundsAsync(
-                    vm.SelectedRow.Id,
-                    maxGiftsToScan: 500);
-
-                _ = funds; // placeholder until gift entry uses these
-
-                var w = new GiftWindow(vm.SelectedRow /*, funds */)
+                // Create the workflow context at selection time.
+                var snapshot = new ConstituentSnapshot
                 {
-                    Owner = this
+                    ConstituentId = vm.SelectedRow.Id,
+                    FullName = vm.SelectedRow.FullName,
+                    Spouse = vm.SelectedRow.Spouse,
+                    Street = vm.SelectedRow.Street,
+                    City = vm.SelectedRow.City,
+                    State = vm.SelectedRow.State,
+                    Zip = vm.SelectedRow.Zip
                 };
 
+                var workflow = GiftWorkflowContext.Start(vm.SearchText, snapshot);
+
+                // existing placeholder call (kept)
+                var funds = await vm.LookupService.GetContributedFundsAsync(vm.SelectedRow.Id, maxGiftsToScan: 500);
+                _ = funds;
+
+                var w = new GiftWindow(vm.SelectedRow, workflow) { Owner = this };
                 w.ShowDialog();
             }
             finally
@@ -161,6 +164,7 @@ namespace CheerfulGiverNXT
             }
 
             var token = vm.AccessToken;
+
             if (string.IsNullOrWhiteSpace(token))
             {
                 _lastToken = null;
@@ -171,14 +175,14 @@ namespace CheerfulGiverNXT
 
             if (token.Length == 0)
             {
-                ButtonAuthorize.Visibility = Visibility.Visible;
+                // if your XAML still has this element
+                if (FindName("ButtonAuthorize") is UIElement authBtn) authBtn.Visibility = Visibility.Visible;
             }
             else
             {
-                ButtonAuthorize.Visibility = Visibility.Collapsed;
-            }   
+                if (FindName("ButtonAuthorize") is UIElement authBtn) authBtn.Visibility = Visibility.Collapsed;
+            }
 
-            // If token changed (e.g., refresh occurred), recompute expiry from JWT.
             if (!string.Equals(_lastToken, token, StringComparison.Ordinal))
             {
                 _lastToken = token;
@@ -192,9 +196,8 @@ namespace CheerfulGiverNXT
             }
 
             var nowUtc = DateTimeOffset.UtcNow;
-
-            // Predict "when refresh should occur" based on expiry minus lead time.
             var refreshAtUtc = _tokenExpiresAtUtc.Value - RefreshLeadTime;
+
             var untilRefresh = refreshAtUtc - nowUtc;
             var untilExpiry = _tokenExpiresAtUtc.Value - nowUtc;
 
@@ -217,7 +220,6 @@ namespace CheerfulGiverNXT
         {
             if (t < TimeSpan.Zero) t = TimeSpan.Zero;
 
-            // Show H:MM:SS when >= 1 hour, else MM:SS
             if (t.TotalHours >= 1)
                 return $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
 
@@ -228,15 +230,14 @@ namespace CheerfulGiverNXT
         {
             try
             {
-                // JWT = header.payload.signature
                 var parts = jwt.Split('.');
                 if (parts.Length < 2) return null;
 
                 var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
                 using var doc = JsonDocument.Parse(payloadJson);
+
                 if (!doc.RootElement.TryGetProperty("exp", out var expEl)) return null;
 
-                // exp is seconds since Unix epoch
                 long expSeconds = expEl.ValueKind switch
                 {
                     JsonValueKind.Number => expEl.GetInt64(),
@@ -255,22 +256,14 @@ namespace CheerfulGiverNXT
 
         private static byte[] Base64UrlDecode(string input)
         {
-            // Base64url -> Base64
             var s = input.Replace('-', '+').Replace('_', '/');
 
-            // Pad to multiple of 4
             switch (s.Length % 4)
             {
-                case 0:
-                    break;
-                case 2:
-                    s += "==";
-                    break;
-                case 3:
-                    s += "=";
-                    break;
-                default:
-                    throw new FormatException("Invalid base64url string length.");
+                case 0: break;
+                case 2: s += "=="; break;
+                case 3: s += "="; break;
+                default: throw new FormatException("Invalid base64url string length.");
             }
 
             return Convert.FromBase64String(s);

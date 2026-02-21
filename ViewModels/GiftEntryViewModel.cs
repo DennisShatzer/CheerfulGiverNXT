@@ -1,15 +1,19 @@
 // GiftEntryViewModel.cs
 // Pledge entry screen VM (pledge commitments only) with a friendly “One-time” option.
-// Hidden fields (fund/campaign/appeal/package/installments/start-date/reminder) remain in the VM for processing.
+// Adds: a single workflow/transaction object as the source of truth.
+// On Save: attempts SKY API call then ALWAYS commits workflow to SQL Express (success or failure).
 
+using CheerfulGiverNXT.Data;
 using CheerfulGiverNXT.Infrastructure;
 using CheerfulGiverNXT.Services;
+using CheerfulGiverNXT.Workflow;
 using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace CheerfulGiverNXT.ViewModels
@@ -37,11 +41,28 @@ namespace CheerfulGiverNXT.ViewModels
             new("Weekly",    PledgeFrequency.Weekly,    4,  false, false),
         };
 
+        private static readonly SponsorshipOption[] HalfDaySponsorshipOptions =
+        {
+            new("Half-day AM", 1000m),
+            new("Half-day PM", 1000m),
+        };
+
+        private static readonly SponsorshipOption[] FullDaySponsorshipOptions =
+        {
+            new("Full day", 2000m),
+        };
+
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
         private readonly RenxtGiftServer _gifts;
 
+        // NEW: workflow source of truth + SQL store
+        private readonly GiftWorkflowContext _workflow;
+        private readonly IGiftWorkflowStore _workflowStore;
+
         public event PropertyChangedEventHandler? PropertyChanged;
         public event EventHandler? RequestClose;
+
+        public GiftWorkflowContext Workflow => _workflow;
 
         public int ConstituentId => _row.Id;
         public string FullName => _row.FullName;
@@ -51,7 +72,8 @@ namespace CheerfulGiverNXT.ViewModels
             get
             {
                 var spouse = string.IsNullOrWhiteSpace(_row.Spouse) ? "" : _row.Spouse.Trim();
-                var line1 = $"ID: {_row.Id}" + (string.IsNullOrWhiteSpace(spouse) ? "" : $"   Spouse: {spouse}");
+
+                var line1 = $"ID: {_row.Id}" + (string.IsNullOrWhiteSpace(spouse) ? "" : $" Spouse: {spouse}");
 
                 var street = (_row.Street ?? "").Trim();
                 var city = (_row.City ?? "").Trim();
@@ -65,7 +87,6 @@ namespace CheerfulGiverNXT.ViewModels
                     zip
                 }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
 
-                // Keep blank lines out if something is missing.
                 return string.Join("\n", new[] { line1, line2, line3 }.Where(s => !string.IsNullOrWhiteSpace(s)));
             }
         }
@@ -131,28 +152,45 @@ namespace CheerfulGiverNXT.ViewModels
         public PledgeFrequency Frequency
         {
             get => _frequency;
-            private set { _frequency = value; OnPropertyChanged(); }
+            private set
+            {
+                _frequency = value;
+                OnPropertyChanged();
+            }
         }
 
         private string _numberOfInstallmentsText = "1";
         public string NumberOfInstallmentsText
         {
             get => _numberOfInstallmentsText;
-            set { _numberOfInstallmentsText = value; OnPropertyChanged(); RefreshCanSave(); }
+            set
+            {
+                _numberOfInstallmentsText = value;
+                OnPropertyChanged();
+                RefreshCanSave();
+            }
         }
 
         private bool _isInstallmentsLocked;
         public bool IsInstallmentsLocked
         {
             get => _isInstallmentsLocked;
-            private set { _isInstallmentsLocked = value; OnPropertyChanged(); }
+            private set
+            {
+                _isInstallmentsLocked = value;
+                OnPropertyChanged();
+            }
         }
 
         private bool _isStartDateLockedToPledgeDate;
         public bool IsStartDateLockedToPledgeDate
         {
             get => _isStartDateLockedToPledgeDate;
-            private set { _isStartDateLockedToPledgeDate = value; OnPropertyChanged(); }
+            private set
+            {
+                _isStartDateLockedToPledgeDate = value;
+                OnPropertyChanged();
+            }
         }
 
         private FrequencyPreset _selectedPreset;
@@ -165,11 +203,10 @@ namespace CheerfulGiverNXT.ViewModels
                 OnPropertyChanged();
 
                 Frequency = value.ApiFrequency;
-
                 NumberOfInstallmentsText = value.DefaultInstallments.ToString(CultureInfo.InvariantCulture);
                 IsInstallmentsLocked = value.LockInstallments;
-
                 IsStartDateLockedToPledgeDate = value.LockStartDateToPledgeDate;
+
                 if (IsStartDateLockedToPledgeDate && PledgeDate.HasValue)
                     FirstInstallmentDate = PledgeDate.Value.Date;
 
@@ -182,7 +219,12 @@ namespace CheerfulGiverNXT.ViewModels
         public string FundIdText
         {
             get => _fundIdText;
-            set { _fundIdText = value; OnPropertyChanged(); RefreshCanSave(); }
+            set
+            {
+                _fundIdText = value;
+                OnPropertyChanged();
+                RefreshCanSave();
+            }
         }
 
         private string _campaignIdText = "";
@@ -220,20 +262,8 @@ namespace CheerfulGiverNXT.ViewModels
             set { _comments = value; OnPropertyChanged(); }
         }
 
-        private static readonly SponsorshipOption[] HalfDaySponsorshipOptions =
-        {
-            new("Half-day AM", 1000m),
-            new("Half-day PM", 1000m)
-        };
-
-        private static readonly SponsorshipOption[] FullDaySponsorshipOptions =
-        {
-            new("Full day", 2000m)
-        };
-
         // Sponsorship eligibility (driven by AmountText thresholds)
         private SponsorshipOption[] _eligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
-
         public SponsorshipOption[] EligibleSponsorshipOptions
         {
             get => _eligibleSponsorshipOptions;
@@ -269,7 +299,6 @@ namespace CheerfulGiverNXT.ViewModels
             }
         }
 
-
         private string _statusText = "Ready.";
         public string StatusText
         {
@@ -303,10 +332,16 @@ namespace CheerfulGiverNXT.ViewModels
         private AsyncRelayCommand? _saveCommand;
         public AsyncRelayCommand SaveCommand => _saveCommand ??= new AsyncRelayCommand(SaveAsync, () => CanSave);
 
-        public GiftEntryViewModel(RenxtConstituentLookupService.ConstituentGridRow row, RenxtGiftServer giftServer)
+        public GiftEntryViewModel(
+            RenxtConstituentLookupService.ConstituentGridRow row,
+            GiftWorkflowContext workflow,
+            RenxtGiftServer giftServer,
+            IGiftWorkflowStore workflowStore)
         {
             _row = row ?? throw new ArgumentNullException(nameof(row));
+            _workflow = workflow ?? throw new ArgumentNullException(nameof(workflow));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
+            _workflowStore = workflowStore ?? throw new ArgumentNullException(nameof(workflowStore));
 
             // Default to One-time.
             _selectedPreset = FrequencyPresets[0];
@@ -367,7 +402,6 @@ namespace CheerfulGiverNXT.ViewModels
                 SponsorshipDate = DateTime.Today;
         }
 
-
         private void RefreshCanSave()
         {
             CanSave = !IsBusy
@@ -394,6 +428,36 @@ namespace CheerfulGiverNXT.ViewModels
             if (!TryParseInstallments(out var installments) || installments <= 0) { StatusText = "# of installments must be a whole number."; return; }
             if (string.IsNullOrWhiteSpace(FundIdText)) { StatusText = "Fund ID is required."; return; }
 
+            // Update workflow draft BEFORE attempting the API.
+            _workflow.Gift.Amount = amount;
+            _workflow.Gift.Frequency = SelectedPreset.Display; // UI-friendly label
+            _workflow.Gift.Installments = installments;
+            _workflow.Gift.PledgeDate = PledgeDate.Value.Date;
+            _workflow.Gift.StartDate = FirstInstallmentDate.Value.Date;
+            _workflow.Gift.FundId = FundIdText.Trim();
+            _workflow.Gift.CampaignId = string.IsNullOrWhiteSpace(CampaignIdText) ? null : CampaignIdText.Trim();
+            _workflow.Gift.AppealId = string.IsNullOrWhiteSpace(AppealIdText) ? null : AppealIdText.Trim();
+            _workflow.Gift.PackageId = string.IsNullOrWhiteSpace(PackageIdText) ? null : PackageIdText.Trim();
+            _workflow.Gift.SendReminder = SendReminder;
+            _workflow.Gift.Comments = string.IsNullOrWhiteSpace(Comments) ? null : Comments.Trim();
+
+            if (ShowSponsorshipSelector && SelectedSponsorshipOption is not null)
+            {
+                _workflow.Gift.Sponsorship.IsEnabled = true;
+                _workflow.Gift.Sponsorship.Slot = SelectedSponsorshipOption.Display;
+                _workflow.Gift.Sponsorship.ThresholdAmount = SelectedSponsorshipOption.ThresholdAmount;
+                _workflow.Gift.Sponsorship.SponsoredDate = SponsorshipDate?.Date;
+            }
+            else
+            {
+                _workflow.Gift.Sponsorship.IsEnabled = false;
+                _workflow.Gift.Sponsorship.Slot = null;
+                _workflow.Gift.Sponsorship.ThresholdAmount = null;
+                _workflow.Gift.Sponsorship.SponsoredDate = null;
+            }
+
+            _workflow.Status = WorkflowStatus.ReadyToSubmit;
+
             IsBusy = true;
             StatusText = "Creating pledge...";
 
@@ -419,29 +483,76 @@ namespace CheerfulGiverNXT.ViewModels
                     AddInstallmentsIfMissing: true
                 );
 
+                _workflow.Api.Attempted = true;
+                _workflow.Api.AttemptedAtUtc = DateTime.UtcNow;
+                _workflow.Api.RequestJson = JsonSerializer.Serialize(req);
+
                 var result = await _gifts.CreatePledgeAsync(req);
+
+                _workflow.Api.Success = true;
+                _workflow.Api.GiftId = result.GiftId;
+                _workflow.Api.CreateResponseJson = result.RawCreateResponseJson;
+                _workflow.Api.InstallmentListJson = result.RawInstallmentListJson;
+                _workflow.Api.InstallmentAddJson = result.RawInstallmentAddJson;
+
+                _workflow.Status = WorkflowStatus.ApiSucceeded;
 
                 StatusText = $"Saved pledge! Gift ID: {result.GiftId}";
                 RequestClose?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
+                _workflow.Api.Success = false;
+                _workflow.Api.ErrorMessage = ex.Message;
+
+                _workflow.Status = WorkflowStatus.ApiFailed;
+
                 StatusText = "Save error: " + ex.Message;
 
-                // Keep your existing log file path as-is
-                try
-                {
-                    File.AppendAllText(
-                        "D:\\CodeProjects\\CheerfulGiverNXT\\CheerfulErrors.txt",
-                        $"{DateTime.Now}: An error occurred: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}"
-                    );
-                }
-                catch { /* ignore */ }
+                TryAppendErrorLog(ex);
             }
             finally
             {
+                _workflow.CompletedAtUtc = DateTime.UtcNow;
+
+                // ALWAYS commit locally (success or failure) so nothing is lost.
+                try
+                {
+                    await _workflowStore.SaveAsync(_workflow);
+                    _workflow.Status = WorkflowStatus.Committed;
+                }
+                catch (Exception ex)
+                {
+                    _workflow.Status = WorkflowStatus.CommitFailed;
+                    StatusText = StatusText + " (Local SQL save failed: " + ex.Message + ")";
+                    TryAppendErrorLog(ex);
+                }
+
                 IsBusy = false;
             }
+        }
+
+        private static void TryAppendErrorLog(Exception ex)
+        {
+            // Keep your existing log file path, but also fall back to LocalAppData if needed.
+            try
+            {
+                File.AppendAllText(
+                    "D:\\CodeProjects\\CheerfulGiverNXT\\CheerfulErrors.txt",
+                    $"{DateTime.Now}: An error occurred: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}"
+                );
+                return;
+            }
+            catch { /* ignore */ }
+
+            try
+            {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CheerfulGiverNXT");
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, "CheerfulErrors.txt");
+                File.AppendAllText(path, $"{DateTime.Now}: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}");
+            }
+            catch { /* ignore */ }
         }
 
         private void OnPropertyChanged([CallerMemberName] string? name = null) =>
