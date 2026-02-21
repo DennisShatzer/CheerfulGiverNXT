@@ -29,14 +29,14 @@
                     Width="110"
                     Margin="0,0,8,0"
                     Command="{Binding SearchCommand}"
-                    IsEnabled="{Binding IsNotBusy}"/>
+                    IsEnabled="{Binding IsNotBusy}" Style="{StaticResource CG.Button.Primary}" />
             <Button Content="Authorize this PC"
                     Width="140"
                     Margin="0,0,8,0"
                     Command="{Binding LoginCommand}"
                     IsEnabled="{Binding IsNotBusy}">
                 <Button.Style>
-                    <Style TargetType="Button">
+                    <Style TargetType="Button" BasedOn="{StaticResource CG.Button.Primary}">
                         <Setter Property="Visibility" Value="Collapsed"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsNotAuthorized}" Value="True">
