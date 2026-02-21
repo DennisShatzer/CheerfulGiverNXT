@@ -81,9 +81,9 @@
                       DisplayMemberPath="Display"
                       Margin="0,0,0,8"/>
 
-            <!-- Sponsorship (appears when Amount qualifies via App.config thresholds) -->
+            <!-- Sponsor Tier (appears when Amount qualifies via thresholds) -->
             <TextBlock Grid.Row="2" Grid.Column="0"
-                       Text="Sponsorship:"
+                       Text="Sponsor Tier:"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Center"
                        Margin="0,0,8,0">
@@ -117,11 +117,11 @@
             </ComboBox>
 
             <!-- Sponsor date (shown only when Sponsorship is shown) -->
-<TextBlock Grid.Row="3" Grid.Column="0"
-           Text="Sponsor date:"
-           HorizontalAlignment="Right"
-           VerticalAlignment="Center"
-           Margin="0,0,8,0">
+            <TextBlock Grid.Row="3" Grid.Column="0"
+                       Text="Sponsor date:"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       Margin="0,6,8,0">
     <TextBlock.Style>
         <!-- IMPORTANT: BasedOn keeps your global/implicit font sizing -->
         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -137,10 +137,9 @@
 
 
             <DatePicker Grid.Row="3" Grid.Column="1"
-                        HorizontalAlignment="Left"
                         VerticalAlignment="Center"
                         SelectedDate="{Binding SponsorshipDate}"
-                        Margin="0">
+                        Margin="0,6,0,0">
                 <DatePicker.Style>
                     <Style TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
 

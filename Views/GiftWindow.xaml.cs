@@ -80,8 +80,8 @@ namespace CheerfulGiverNXT
             if (NewConstituentBanner is null) return;
 
             NewConstituentBanner.Visibility = _isNewRadioConstituent
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+                ? Visibility.Collapsed
+                : Visibility.Visible;
         }
 
         private static string[] LoadRadioFundTokens()

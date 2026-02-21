@@ -37,9 +37,9 @@
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>
 
-    <!-- DatePicker: consistent height and vertically centered content -->
     <Style TargetType="{x:Type DatePicker}" BasedOn="{StaticResource {x:Type Control}}">
         <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="8,0,8,0"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>

@@ -5,9 +5,7 @@
 using CheerfulGiverNXT.Infrastructure;
 using CheerfulGiverNXT.Services;
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Configuration;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -222,8 +220,18 @@ namespace CheerfulGiverNXT.ViewModels
             set { _comments = value; OnPropertyChanged(); }
         }
 
-        // Sponsorship eligibility (driven by AmountText + App.config)
-        private readonly SponsorshipOption[] _allSponsorshipOptions;
+        private static readonly SponsorshipOption[] HalfDaySponsorshipOptions =
+        {
+            new("Half-day AM", 1000m),
+            new("Half-day PM", 1000m)
+        };
+
+        private static readonly SponsorshipOption[] FullDaySponsorshipOptions =
+        {
+            new("Full day", 2000m)
+        };
+
+        // Sponsorship eligibility (driven by AmountText thresholds)
         private SponsorshipOption[] _eligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
 
         public SponsorshipOption[] EligibleSponsorshipOptions
@@ -300,8 +308,6 @@ namespace CheerfulGiverNXT.ViewModels
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
 
-            _allSponsorshipOptions = LoadSponsorshipOptions();
-
             // Default to One-time.
             _selectedPreset = FrequencyPresets[0];
             Frequency = _selectedPreset.ApiFrequency;
@@ -321,14 +327,6 @@ namespace CheerfulGiverNXT.ViewModels
 
         private void RefreshSponsorshipEligibility()
         {
-            if (_allSponsorshipOptions.Length == 0)
-            {
-                EligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
-                SelectedSponsorshipOption = null;
-                SponsorshipDate = null;
-                return;
-            }
-
             if (!TryParseAmount(out var amt) || amt <= 0m)
             {
                 EligibleSponsorshipOptions = Array.Empty<SponsorshipOption>();
@@ -337,12 +335,19 @@ namespace CheerfulGiverNXT.ViewModels
                 return;
             }
 
-            // Qualify when amount meets or exceeds the configured threshold.
-            var eligible = _allSponsorshipOptions
-                .Where(o => amt >= o.ThresholdAmount)
-                .OrderBy(o => o.ThresholdAmount)
-                .ThenBy(o => o.Display, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            SponsorshipOption[] eligible;
+            if (amt >= 2000m)
+            {
+                eligible = FullDaySponsorshipOptions;
+            }
+            else if (amt >= 1000m)
+            {
+                eligible = HalfDaySponsorshipOptions;
+            }
+            else
+            {
+                eligible = Array.Empty<SponsorshipOption>();
+            }
 
             EligibleSponsorshipOptions = eligible;
 
@@ -354,7 +359,7 @@ namespace CheerfulGiverNXT.ViewModels
             }
 
             // Keep selection if still eligible, else default to first eligible.
-            if (_selectedSponsorshipOption is null || !eligible.Any(x => x.Display == _selectedSponsorshipOption.Display && x.ThresholdAmount == _selectedSponsorshipOption.ThresholdAmount))
+            if (_selectedSponsorshipOption is null || !eligible.Any(x => x.Display == _selectedSponsorshipOption.Display))
                 SelectedSponsorshipOption = eligible[0];
 
             // If sponsorship becomes eligible and no date has been chosen yet, default to today.
@@ -362,58 +367,6 @@ namespace CheerfulGiverNXT.ViewModels
                 SponsorshipDate = DateTime.Today;
         }
 
-        private static SponsorshipOption[] LoadSponsorshipOptions()
-        {
-            // Preferred:
-            // <add key="SponsorshipOptions" value="Half-day AM=1000;Half-day PM=1000;Full day=2000" />
-            var raw = (ConfigurationManager.AppSettings["SponsorshipOptions"] ?? "").Trim();
-            var list = new List<SponsorshipOption>();
-
-            if (!string.IsNullOrWhiteSpace(raw))
-            {
-                foreach (var part in raw.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    var kv = part.Split(new[] { '=' }, 2);
-                    if (kv.Length != 2) continue;
-
-                    var name = (kv[0] ?? "").Trim();
-                    var amountText = (kv[1] ?? "").Trim();
-
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-                    if (!decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out var threshold)) continue;
-                    if (threshold <= 0m) continue;
-
-                    list.Add(new SponsorshipOption(name, threshold));
-                }
-            }
-
-            // Alternate format:
-            // <add key="Sponsorship:Half-day AM" value="1000" />
-            // <add key="Sponsorship:Full day" value="2000" />
-            if (list.Count == 0)
-            {
-                foreach (var key in ConfigurationManager.AppSettings.AllKeys ?? Array.Empty<string>())
-                {
-                    if (key is null) continue;
-                    if (!key.StartsWith("Sponsorship:", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    var name = key.Substring("Sponsorship:".Length).Trim();
-                    var amountText = (ConfigurationManager.AppSettings[key] ?? "").Trim();
-
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-                    if (!decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out var threshold)) continue;
-                    if (threshold <= 0m) continue;
-
-                    list.Add(new SponsorshipOption(name, threshold));
-                }
-            }
-
-            // De-dup by name+threshold
-            return list
-                .GroupBy(o => (Name: o.Display.Trim(), o.ThresholdAmount))
-                .Select(g => g.First())
-                .ToArray();
-        }
 
         private void RefreshCanSave()
         {
