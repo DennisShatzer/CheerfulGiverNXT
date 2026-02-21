@@ -1,83 +1,339 @@
 <Application x:Class="CheerfulGiverNXT.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib">
     <Application.Resources>
 
-    <!-- Base font size for the whole app -->
-    <Style TargetType="{x:Type Control}">
-        <Setter Property="FontSize" Value="16"/>
-    </Style>
+        <!-- =========================
+             Theme tokens (easy to tweak)
+             ========================= -->
+        <FontFamily x:Key="CG.FontFamily">Segoe UI</FontFamily>
 
-    <Style TargetType="{x:Type TextBlock}">
-        <Setter Property="FontSize" Value="16"/>
-    </Style>
+        <CornerRadius x:Key="CG.CornerRadius.Input">6</CornerRadius>
+        <CornerRadius x:Key="CG.CornerRadius.Button">8</CornerRadius>
 
-    <!-- TextBox: vertically centered typing, consistent height/padding -->
-    <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="MinHeight" Value="34"/>
-        <Setter Property="Padding" Value="8,0,8,0"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="TextAlignment" Value="Left"/>
+        <sys:Double x:Key="CG.FontSize.Base">16</sys:Double>
+        <sys:Double x:Key="CG.FontSize.Small">14</sys:Double>
 
-        <!-- Multiline textboxes should stay top-aligned (comments, notes, etc.) -->
-        <Style.Triggers>
-            <Trigger Property="AcceptsReturn" Value="True">
-                <Setter Property="VerticalContentAlignment" Value="Top"/>
-                <Setter Property="Padding" Value="8,6,8,6"/>
-            </Trigger>
-        </Style.Triggers>
-    </Style>
+        <Thickness x:Key="CG.BorderThickness.Input">1</Thickness>
+        <Thickness x:Key="CG.BorderThickness.Focus">2</Thickness>
 
-    <!-- ComboBox: consistent height and vertically centered content -->
-    <Style TargetType="{x:Type ComboBox}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="MinHeight" Value="34"/>
-        <Setter Property="Padding" Value="8,0,8,0"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-    </Style>
+        <SolidColorBrush x:Key="CG.Brush.WindowBackground" Color="#FFF6F7F9"/>
+        <SolidColorBrush x:Key="CG.Brush.ControlBackground" Color="#FFFFFFFF"/>
+        <SolidColorBrush x:Key="CG.Brush.ControlBackground.Hover" Color="#FFFAFBFC"/>
+        <SolidColorBrush x:Key="CG.Brush.ControlBackground.Disabled" Color="#FFF0F2F5"/>
 
-    <Style TargetType="{x:Type DatePicker}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="MinHeight" Value="34"/>
-        <Setter Property="Padding" Value="8,0,8,0"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-    </Style>
+        <SolidColorBrush x:Key="CG.Brush.Text" Color="#FF111827"/>
+        <SolidColorBrush x:Key="CG.Brush.Text.Muted" Color="#FF4B5563"/>
+        <SolidColorBrush x:Key="CG.Brush.Text.Disabled" Color="#FF9CA3AF"/>
 
-    <!-- The editable textbox inside the DatePicker -->
-    <Style TargetType="{x:Type DatePickerTextBox}">
-        <Setter Property="Padding" Value="8,0,8,0"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-    </Style>
+        <SolidColorBrush x:Key="CG.Brush.Border" Color="#FFD1D5DB"/>
+        <SolidColorBrush x:Key="CG.Brush.Border.Hover" Color="#FF9CA3AF"/>
+        <SolidColorBrush x:Key="CG.Brush.Border.Focus" Color="#FF2563EB"/>
+        <SolidColorBrush x:Key="CG.Brush.Border.Error" Color="#FFDC2626"/>
 
-    <!-- Buttons: standardized height + minimum width + padding -->
-    <Style TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="Height" Value="36"/>
-        <Setter Property="MinWidth" Value="140"/>
-        <Setter Property="Padding" Value="12,4"/>
-    </Style>
+        <SolidColorBrush x:Key="CG.Brush.Accent" Color="#FF2563EB"/>
+        <SolidColorBrush x:Key="CG.Brush.Accent.Hover" Color="#FF1D4ED8"/>
+        <SolidColorBrush x:Key="CG.Brush.Accent.Pressed" Color="#FF1E40AF"/>
 
-    <!-- DataGrid readability + vertical centering in cells/headers -->
-    <Style TargetType="{x:Type DataGrid}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="RowHeight" Value="30"/>
-        <Setter Property="ColumnHeaderHeight" Value="32"/>
-    </Style>
+        <SolidColorBrush x:Key="CG.Brush.Selection" Color="#332563EB"/>
 
-    <Style TargetType="{x:Type DataGridCell}">
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="Padding" Value="6,0,6,0"/>
-    </Style>
+        <!-- Optional: consistent window background (if you want it app-wide) -->
+        <Style TargetType="{x:Type Window}">
+            <Setter Property="Background" Value="{StaticResource CG.Brush.WindowBackground}"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
 
-    <Style TargetType="{x:Type DataGridColumnHeader}">
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="Padding" Value="6,0,6,0"/>
-    </Style>
+        <!-- Base font for the whole app -->
+        <Style TargetType="{x:Type Control}">
+            <Setter Property="FontFamily" Value="{StaticResource CG.FontFamily}"/>
+            <Setter Property="FontSize" Value="{StaticResource CG.FontSize.Base}"/>
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
 
-    <Style TargetType="{x:Type StatusBar}" BasedOn="{StaticResource {x:Type Control}}">
-        <Setter Property="FontSize" Value="15"/>
-    </Style>
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="FontFamily" Value="{StaticResource CG.FontFamily}"/>
+            <Setter Property="FontSize" Value="{StaticResource CG.FontSize.Base}"/>
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text}"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        </Style>
 
-</Application.Resources>
+        <Style TargetType="{x:Type Label}">
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text.Muted}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="{x:Type ToolTip}">
+            <Setter Property="FontFamily" Value="{StaticResource CG.FontFamily}"/>
+            <Setter Property="FontSize" Value="{StaticResource CG.FontSize.Small}"/>
+            <Setter Property="MaxWidth" Value="420"/>
+        </Style>
+
+        <!-- =========================
+             Validation visuals
+             ========================= -->
+        <Style x:Key="CG.ValidationErrorStyle" TargetType="{x:Type Control}">
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="ToolTip"
+                            Value="{Binding RelativeSource={RelativeSource Self},
+                                            Path=(Validation.Errors)[0].ErrorContent}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- =========================
+             TextBox / PasswordBox
+             ========================= -->
+        <ControlTemplate x:Key="CG.TextBoxTemplate" TargetType="{x:Type TextBox}">
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource CG.CornerRadius.Input}"
+                    SnapsToDevicePixels="True">
+                <ScrollViewer x:Name="PART_ContentHost"
+                              Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Hover}"/>
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource CG.Brush.ControlBackground.Hover}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Focus}"/>
+                    <Setter TargetName="Bd" Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource CG.Brush.ControlBackground.Disabled}"/>
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+                    <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text.Disabled}"/>
+                </Trigger>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Error}"/>
+                    <Setter TargetName="Bd" Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style TargetType="{x:Type TextBox}"
+               BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="10,6,10,6"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Input}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource CG.Brush.Selection}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="TextAlignment" Value="Left"/>
+            <Setter Property="Template" Value="{StaticResource CG.TextBoxTemplate}"/>
+            <Setter Property="Style" Value="{StaticResource CG.ValidationErrorStyle}"/>
+
+            <!-- Multiline textboxes should stay top-aligned -->
+            <Style.Triggers>
+                <Trigger Property="AcceptsReturn" Value="True">
+                    <Setter Property="VerticalContentAlignment" Value="Top"/>
+                    <Setter Property="Padding" Value="10,10,10,10"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- PasswordBox doesn't expose TemplateBinding-friendly parts like TextBox,
+             but we can still unify the border/spacing. -->
+        <Style TargetType="{x:Type PasswordBox}" BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="10,6,10,6"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Input}"/>
+        </Style>
+
+        <!-- =========================
+             Button (modern, readable)
+             ========================= -->
+        <Style TargetType="{x:Type Button}"
+               BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="MinWidth" Value="140"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.Accent}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Accent}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{StaticResource CG.CornerRadius.Button}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CG.Brush.Accent.Hover}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Accent.Hover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CG.Brush.Accent.Pressed}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource CG.Brush.Accent.Pressed}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#FFCBD5E1"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FFCBD5E1"/>
+                                <Setter Property="Foreground" Value="#FF6B7280"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- =========================
+             ComboBox (safe improvements + consistent colors)
+             ========================= -->
+        <Style TargetType="{x:Type ComboBox}"
+               BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="10,6,10,6"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Input}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Style" Value="{StaticResource CG.ValidationErrorStyle}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Hover}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Focus}"/>
+                    <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground.Disabled}"/>
+                    <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text.Disabled}"/>
+                </Trigger>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Error}"/>
+                    <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- =========================
+             DatePicker (consistent sizing + error handling)
+             ========================= -->
+        <Style TargetType="{x:Type DatePicker}"
+               BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Input}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="SelectedDateFormat" Value="Short"/>
+            <Setter Property="Style" Value="{StaticResource CG.ValidationErrorStyle}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Hover}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Focus}"/>
+                    <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Error}"/>
+                    <Setter Property="BorderThickness" Value="{StaticResource CG.BorderThickness.Focus}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground.Disabled}"/>
+                    <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text.Disabled}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Editable textbox inside DatePicker -->
+        <Style TargetType="{x:Type DatePickerTextBox}">
+            <Setter Property="Padding" Value="10,6,10,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+        <!-- =========================
+             DataGrid (cleaner + more readable)
+             ========================= -->
+        <Style TargetType="{x:Type DataGrid}"
+               BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="FontSize" Value="{StaticResource CG.FontSize.Base}"/>
+            <Setter Property="RowHeight" Value="32"/>
+            <Setter Property="ColumnHeaderHeight" Value="34"/>
+            <Setter Property="Background" Value="{StaticResource CG.Brush.ControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#FFE5E7EB"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#FFF3F4F6"/>
+            <Setter Property="AlternatingRowBackground" Value="#FFF9FAFB"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridCell}">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10,0,10,0"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource CG.Brush.Selection}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Border.Focus}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridColumnHeader}">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10,0,10,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text.Muted}"/>
+            <Setter Property="Background" Value="#FFF3F4F6"/>
+            <Setter Property="BorderBrush" Value="#FFE5E7EB"/>
+        </Style>
+
+        <!-- =========================
+             StatusBar
+             ========================= -->
+        <Style TargetType="{x:Type StatusBar}" BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="FontSize" Value="{StaticResource CG.FontSize.Small}"/>
+            <Setter Property="Background" Value="#FFF3F4F6"/>
+            <Setter Property="BorderBrush" Value="#FFE5E7EB"/>
+            <Setter Property="BorderThickness" Value="1,1,1,0"/>
+        </Style>
+
+        <!-- =========================
+             CheckBox / RadioButton (subtle polish)
+             ========================= -->
+        <Style TargetType="{x:Type CheckBox}" BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="{x:Type RadioButton}" BasedOn="{StaticResource {x:Type Control}}">
+            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+    </Application.Resources>
 </Application>
