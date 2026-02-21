@@ -227,6 +227,15 @@
              Buttons (neutral by default; IsDefault => primary)
              ============================================================ -->
 
+        <!-- Explicit primary (use when you don't want IsDefault) -->
+        <Style x:Key="CG.Button.Primary"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource CG.Brush.Accent}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Accent}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
         <!-- Show a primary button only when the VM says the machine is not authorized -->
         <Style x:Key="CG.Button.VisibleWhenNotAuthorized"
                TargetType="{x:Type Button}"
@@ -362,15 +371,6 @@
                     <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Accent.Pressed}"/>
                 </MultiTrigger>
             </Style.Triggers>
-        </Style>
-
-        <!-- Explicit primary (use when you don't want IsDefault) -->
-        <Style x:Key="CG.Button.Primary"
-               TargetType="{x:Type Button}"
-               BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="{StaticResource CG.Brush.Accent}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Accent}"/>
-            <Setter Property="Foreground" Value="White"/>
         </Style>
 
         <!-- Icon button (used inside templates, safe sizing) -->
