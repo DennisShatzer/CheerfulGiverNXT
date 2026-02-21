@@ -79,6 +79,7 @@
              Window defaults
              ========================= -->
         <Style TargetType="{x:Type Window}">
+            <Setter Property="TextElement.Foreground" Value="{StaticResource CG.Brush.Text}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="ui:Win11Mica.IsEnabled" Value="True"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
@@ -109,9 +110,7 @@
 
         <Style TargetType="{x:Type TextBlock}">
             <Setter Property="FontFamily" Value="{StaticResource CG.FontFamily}"/>
-            <Setter Property="FontSize" Value="{StaticResource CG.Density.FontSize.Base}"/>
-            <Setter Property="Foreground" Value="{StaticResource CG.Brush.Text}"/>
-            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="FontSize" Value="{StaticResource CG.Density.FontSize.Base}"/><Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
         </Style>
 
         <Style TargetType="{x:Type Label}">
@@ -227,6 +226,71 @@
         <!-- ============================================================
              Buttons (neutral by default; IsDefault => primary)
              ============================================================ -->
+
+        <!-- Show a primary button only when the VM says the machine is not authorized -->
+        <Style x:Key="CG.Button.VisibleWhenNotAuthorized"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource CG.Button.Primary}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNotAuthorized}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+
+        <!-- Admin window: consistent small buttons -->
+        <Style x:Key="CG.Button.AdminSized"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="190"/>
+            <Setter Property="Height" Value="30"/>
+        </Style>
+
+        <Style x:Key="CG.Button.AdminSized.Primary"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource CG.Button.Primary}">
+            <Setter Property="Width" Value="190"/>
+            <Setter Property="Height" Value="30"/>
+        </Style>
+
+
+        <!-- GiftWindow: show/hide sponsorship UI based on ShowSponsorshipSelector -->
+        <Style x:Key="CG.ShowWhenSponsorshipSelector.TextBlock"
+               TargetType="{x:Type TextBlock}"
+               BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CG.ShowWhenSponsorshipSelector.ComboBox"
+               TargetType="{x:Type ComboBox}"
+               BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CG.ShowWhenSponsorshipSelector.DatePicker"
+               TargetType="{x:Type DatePicker}"
+               BasedOn="{StaticResource {x:Type DatePicker}}">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+
         <ControlTemplate x:Key="CG.Template.Button" TargetType="{x:Type Button}">
                 <Border x:Name="Bd"
                         Background="{TemplateBinding Background}"
@@ -661,7 +725,7 @@
                                       Visibility="Collapsed"
                                       Margin="3"/>
                             </Border>
-                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -699,7 +763,7 @@
                                          Fill="{StaticResource CG.Brush.Accent}"
                                          Visibility="Collapsed"/>
                             </Grid>
-                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">

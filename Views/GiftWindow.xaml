@@ -87,16 +87,7 @@
                        HorizontalAlignment="Right"
                        VerticalAlignment="Center"
                        Margin="0,0,8,0">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
+                Style="{StaticResource CG.ShowWhenSponsorshipSelector.TextBlock}"
             </TextBlock>
 
             <ComboBox Grid.Row="2" Grid.Column="1"
@@ -104,16 +95,7 @@
                       SelectedItem="{Binding SelectedSponsorshipOption}"
                       DisplayMemberPath="Display"
                       Margin="0">
-                <ComboBox.Style>
-                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </ComboBox.Style>
+                Style="{StaticResource CG.ShowWhenSponsorshipSelector.ComboBox}"
             </ComboBox>
 
             <!-- Sponsor date (shown only when Sponsorship is shown) -->
@@ -122,17 +104,7 @@
                        HorizontalAlignment="Right"
                        VerticalAlignment="Center"
                        Margin="0,6,8,0">
-    <TextBlock.Style>
-        <!-- IMPORTANT: BasedOn keeps your global/implicit font sizing -->
-        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-            <Setter Property="Visibility" Value="Collapsed"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                    <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-    </TextBlock.Style>
+    Style="{StaticResource CG.ShowWhenSponsorshipSelector.TextBlock}"
 </TextBlock>
 
 
@@ -140,17 +112,7 @@
                         VerticalAlignment="Center"
                         SelectedDate="{Binding SponsorshipDate}"
                         Margin="0,6,0,0">
-                <DatePicker.Style>
-                    <Style TargetType="DatePicker" BasedOn="{StaticResource {x:Type DatePicker}}">
-
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ShowSponsorshipSelector}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </DatePicker.Style>
+                Style="{StaticResource CG.ShowWhenSponsorshipSelector.DatePicker}"
             </DatePicker>
 
         </Grid>

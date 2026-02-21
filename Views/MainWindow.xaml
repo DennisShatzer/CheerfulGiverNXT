@@ -34,18 +34,7 @@
                     Width="140"
                     Margin="0,0,8,0"
                     Command="{Binding LoginCommand}"
-                    IsEnabled="{Binding IsNotBusy}">
-                <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource CG.Button.Primary}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsNotAuthorized}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
+                    IsEnabled="{Binding IsNotBusy}" Style="{StaticResource CG.Button.VisibleWhenNotAuthorized}"/>
         </DockPanel>
 
         <!-- Auth debug (read-only) -->
