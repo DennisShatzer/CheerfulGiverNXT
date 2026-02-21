@@ -228,17 +228,20 @@
              Buttons (neutral by default; IsDefault => primary)
              ============================================================ -->
         <ControlTemplate x:Key="CG.Template.Button" TargetType="{x:Type Button}">
-            <Border x:Name="Bd"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="{StaticResource CG.CornerRadius.Button}"
-                    SnapsToDevicePixels="True">
-                <ContentPresenter Margin="{TemplateBinding Padding}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  RecognizesAccessKey="True"/>
-            </Border>
+                <Border x:Name="Bd"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{StaticResource CG.CornerRadius.Button}"
+                        SnapsToDevicePixels="True">
+
+                    <!-- ADD TextElement.Foreground binding right here -->
+                    <ContentPresenter Margin="{TemplateBinding Padding}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      RecognizesAccessKey="True"
+                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
+                </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter TargetName="Bd" Property="Background" Value="{StaticResource CG.Brush.Surface.Hover}"/>
@@ -298,7 +301,9 @@
         </Style>
 
         <!-- Explicit primary (use when you don't want IsDefault) -->
-        <Style x:Key="CG.Button.Primary" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+        <Style x:Key="CG.Button.Primary"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{StaticResource CG.Brush.Accent}"/>
             <Setter Property="BorderBrush" Value="{StaticResource CG.Brush.Accent}"/>
             <Setter Property="Foreground" Value="White"/>
