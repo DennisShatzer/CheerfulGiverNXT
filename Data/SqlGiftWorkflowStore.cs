@@ -1,6 +1,7 @@
 using CheerfulGiverNXT.Workflow;
 using Microsoft.Data.SqlClient;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,7 +15,40 @@ public interface IGiftWorkflowStore
     /// Run Sql/001_CreateGiftWorkflowTables.sql once to create tables.
     /// </summary>
     Task SaveAsync(GiftWorkflowContext ctx, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists successful gifts previously saved by this app for the given constituent,
+    /// optionally filtered to a specific campaign id.
+    /// </summary>
+    Task<GiftHistoryItem[]> ListSuccessfulGiftsAsync(
+        int constituentId,
+        string? campaignId,
+        int take = 50,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the dates that are fully booked for the given campaign in dbo.CGDatesSponsored.
+    /// A date is considered FULL if a DayPart = 'FULL' row exists, OR if both AM and PM exist.
+    /// Cancelled rows (IsCancelled = 1) are ignored.
+    /// </summary>
+    Task<DateTime[]> ListFullyBookedSponsorshipDatesAsync(
+        int campaignRecordId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct = default);
 }
+
+public sealed record GiftHistoryItem(
+    DateTime? PledgeDate,
+    decimal Amount,
+    string? Frequency,
+    int? Installments,
+    string? ApiGiftId,
+    DateTime? SponsoredDate,
+    string? Slot,
+    string? Comments,
+    DateTime CreatedAtUtc
+);
 
 public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
 {
@@ -58,6 +92,128 @@ public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
         {
             await tx.RollbackAsync(ct).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    public async Task<GiftHistoryItem[]> ListSuccessfulGiftsAsync(
+        int constituentId,
+        string? campaignId,
+        int take = 50,
+        CancellationToken ct = default)
+    {
+        if (take <= 0) return Array.Empty<GiftHistoryItem>();
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        const string sql = @"
+SELECT TOP (@Take)
+    g.PledgeDate,
+    g.Amount,
+    g.Frequency,
+    g.Installments,
+    g.ApiGiftId,
+    s.SponsoredDate,
+    s.Slot,
+    g.Comments,
+    g.CreatedAtUtc
+FROM dbo.CGGiftWorkflowGifts g
+LEFT JOIN dbo.CGGiftWorkflowSponsorships s ON s.WorkflowId = g.WorkflowId
+WHERE g.ConstituentId = @ConstituentId
+  AND (@CampaignId IS NULL OR g.CampaignId = @CampaignId)
+  AND g.ApiSucceeded = 1
+ORDER BY COALESCE(g.PledgeDate, CONVERT(date, g.CreatedAtUtc)) DESC,
+         g.CreatedAtUtc DESC;";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@Take", SqlDbType.Int) { Value = take });
+        cmd.Parameters.Add(new SqlParameter("@ConstituentId", SqlDbType.Int) { Value = constituentId });
+        cmd.Parameters.Add(new SqlParameter("@CampaignId", SqlDbType.NVarChar, 50)
+        { Value = (object?)campaignId ?? DBNull.Value });
+
+        var items = new List<GiftHistoryItem>(Math.Min(take, 50));
+
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            DateTime? pledgeDate = r["PledgeDate"] is DBNull ? null : (DateTime)r["PledgeDate"];
+            decimal amount = r["Amount"] is DBNull ? 0m : (decimal)r["Amount"];
+            string? frequency = r["Frequency"] is DBNull ? null : (string)r["Frequency"];
+            int? installments = r["Installments"] is DBNull ? null : (int)r["Installments"];
+            string? apiGiftId = r["ApiGiftId"] is DBNull ? null : (string)r["ApiGiftId"];
+            DateTime? sponsoredDate = r["SponsoredDate"] is DBNull ? null : (DateTime)r["SponsoredDate"];
+            string? slot = r["Slot"] is DBNull ? null : (string)r["Slot"];
+            string? comments = r["Comments"] is DBNull ? null : (string)r["Comments"];
+            DateTime createdAtUtc = r["CreatedAtUtc"] is DBNull ? DateTime.MinValue : (DateTime)r["CreatedAtUtc"];
+
+            items.Add(new GiftHistoryItem(
+                pledgeDate,
+                amount,
+                frequency,
+                installments,
+                apiGiftId,
+                sponsoredDate,
+                slot,
+                comments,
+                createdAtUtc));
+        }
+
+        return items.ToArray();
+    }
+
+    public async Task<DateTime[]> ListFullyBookedSponsorshipDatesAsync(
+        int campaignRecordId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct = default)
+    {
+        if (campaignRecordId <= 0) return Array.Empty<DateTime>();
+
+        // Normalize to dates (SQL column is [date])
+        var start = startDate.Date;
+        var end = endDate.Date;
+        if (end < start) (start, end) = (end, start);
+
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+
+            const string sql = @"
+SELECT SponsoredDate
+FROM dbo.CGDatesSponsored
+WHERE CampaignRecordId = @CampaignRecordId
+  AND SponsoredDate >= @StartDate
+  AND SponsoredDate <= @EndDate
+  AND IsCancelled = 0
+GROUP BY SponsoredDate
+HAVING SUM(CASE WHEN DayPart = N'FULL' THEN 1 ELSE 0 END) > 0
+    OR (SUM(CASE WHEN DayPart = N'AM' THEN 1 ELSE 0 END) > 0
+        AND SUM(CASE WHEN DayPart = N'PM' THEN 1 ELSE 0 END) > 0)
+ORDER BY SponsoredDate;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignRecordId });
+            cmd.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date) { Value = start });
+            cmd.Parameters.Add(new SqlParameter("@EndDate", SqlDbType.Date) { Value = end });
+
+            var dates = new List<DateTime>();
+
+            await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await r.ReadAsync(ct).ConfigureAwait(false))
+            {
+                if (r[0] is DBNull) continue;
+                dates.Add(((DateTime)r[0]).Date);
+            }
+
+            return dates.ToArray();
+        }
+        catch
+        {
+            // If CGDatesSponsored isn't present or query fails, treat as "no blackout".
+            return Array.Empty<DateTime>();
         }
     }
 

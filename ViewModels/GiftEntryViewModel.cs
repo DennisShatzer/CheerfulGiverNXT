@@ -8,12 +8,14 @@ using CheerfulGiverNXT.Infrastructure;
 using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.Workflow;
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CheerfulGiverNXT.ViewModels
@@ -38,7 +40,6 @@ namespace CheerfulGiverNXT.ViewModels
             new("Monthly",   PledgeFrequency.Monthly,  12,  false, false),
             new("Quarterly", PledgeFrequency.Quarterly, 4,  false, false),
             new("Annually",  PledgeFrequency.Annually,  1,  false, false),
-            new("Weekly",    PledgeFrequency.Weekly,    4,  false, false),
         };
 
         private static readonly SponsorshipOption[] HalfDaySponsorshipOptions =
@@ -50,6 +51,8 @@ namespace CheerfulGiverNXT.ViewModels
         private static readonly SponsorshipOption[] FullDaySponsorshipOptions =
         {
             new("Full day", 2000m),
+            new("Half-day AM", 1000m),
+            new("Half-day PM", 1000m),
         };
 
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
@@ -63,6 +66,126 @@ namespace CheerfulGiverNXT.ViewModels
         public event EventHandler? RequestClose;
 
         public GiftWorkflowContext Workflow => _workflow;
+
+
+        public ObservableCollection<GiftHistoryItem> ExistingCampaignGifts { get; } = new();
+
+
+        // Dates that are fully booked (FULL, or both AM and PM) for the current campaign.
+        public ObservableCollection<DateTime> FullyBookedSponsorshipDates { get; } = new();
+
+        private int _fullyBookedLoadVersion;
+
+        private int? GetCampaignRecordIdForSponsorship()
+        {
+            if (int.TryParse((CampaignIdText ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cid) && cid > 0)
+                return cid;
+
+            if (int.TryParse((_workflow.Gift.CampaignId ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out cid) && cid > 0)
+                return cid;
+
+            return null;
+        }
+
+        private async Task ReloadFullyBookedSponsorshipDatesAsync()
+        {
+            var version = Interlocked.Increment(ref _fullyBookedLoadVersion);
+
+            try
+            {
+                var campaignRecordId = GetCampaignRecordIdForSponsorship();
+                if (campaignRecordId is null)
+                {
+                    if (version != _fullyBookedLoadVersion) return;
+                    FullyBookedSponsorshipDates.Clear();
+                    return;
+                }
+
+                var start = DateTime.Today.Date;
+                var end = start.AddMonths(18).Date;
+
+                var dates = await _workflowStore
+                    .ListFullyBookedSponsorshipDatesAsync(campaignRecordId.Value, start, end)
+                    .ConfigureAwait(true);
+
+                if (version != _fullyBookedLoadVersion) return;
+
+                FullyBookedSponsorshipDates.Clear();
+                foreach (var d in dates)
+                    FullyBookedSponsorshipDates.Add(d.Date);
+            }
+            catch
+            {
+                if (version != _fullyBookedLoadVersion) return;
+                FullyBookedSponsorshipDates.Clear();
+            }
+        }
+
+        private bool _isLoadingExistingCampaignGifts;
+        public bool IsLoadingExistingCampaignGifts
+        {
+            get => _isLoadingExistingCampaignGifts;
+            private set
+            {
+                if (_isLoadingExistingCampaignGifts == value) return;
+                _isLoadingExistingCampaignGifts = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
+            }
+        }
+
+        private string _existingCampaignGiftsStatus = "";
+        public string ExistingCampaignGiftsStatus
+        {
+            get => _existingCampaignGiftsStatus;
+            private set { _existingCampaignGiftsStatus = value; OnPropertyChanged(); }
+        }
+
+        public string ExistingCampaignGiftsHeader
+        {
+            get
+            {
+                var campaign = string.IsNullOrWhiteSpace(CampaignIdText) ? null : CampaignIdText.Trim();
+                var baseLabel = campaign is null ? "Prior gifts (all campaigns)" : $"Prior gifts (campaign {campaign})";
+                if (IsLoadingExistingCampaignGifts) return baseLabel + " — loading...";
+                return ExistingCampaignGifts.Count == 0 ? baseLabel : $"{baseLabel} — {ExistingCampaignGifts.Count}";
+            }
+        }
+
+        private int _giftHistoryLoadVersion;
+
+        private async Task ReloadExistingCampaignGiftsAsync()
+        {
+            var version = Interlocked.Increment(ref _giftHistoryLoadVersion);
+
+            try
+            {
+                IsLoadingExistingCampaignGifts = true;
+                ExistingCampaignGiftsStatus = "Loading prior gifts...";
+
+                var campaignId = string.IsNullOrWhiteSpace(CampaignIdText) ? null : CampaignIdText.Trim();
+                var items = await _workflowStore.ListSuccessfulGiftsAsync(ConstituentId, campaignId, take: 50).ConfigureAwait(true);
+
+                if (version != _giftHistoryLoadVersion) return;
+
+                ExistingCampaignGifts.Clear();
+                foreach (var it in items)
+                    ExistingCampaignGifts.Add(it);
+
+                ExistingCampaignGiftsStatus = items.Length == 0 ? "No gifts found." : "";
+            }
+            catch (Exception ex)
+            {
+                if (version != _giftHistoryLoadVersion) return;
+                ExistingCampaignGifts.Clear();
+                ExistingCampaignGiftsStatus = "Unable to load prior gifts: " + ex.Message;
+            }
+            finally
+            {
+                if (version == _giftHistoryLoadVersion)
+                    IsLoadingExistingCampaignGifts = false;
+            }
+        }
 
         public int ConstituentId => _row.Id;
         public string FullName => _row.FullName;
@@ -231,7 +354,14 @@ namespace CheerfulGiverNXT.ViewModels
         public string CampaignIdText
         {
             get => _campaignIdText;
-            set { _campaignIdText = value; OnPropertyChanged(); }
+            set
+            {
+                _campaignIdText = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
+                _ = ReloadExistingCampaignGiftsAsync();
+                _ = ReloadFullyBookedSponsorshipDatesAsync();
+            }
         }
 
         private string _appealIdText = "";
@@ -356,7 +486,14 @@ namespace CheerfulGiverNXT.ViewModels
             // Create command after defaults are applied.
             _saveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave);
 
-            RefreshSponsorshipEligibility();
+            
+
+            ExistingCampaignGifts.CollectionChanged += (_, __) =>
+                OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
+
+            _ = ReloadExistingCampaignGiftsAsync();
+                _ = ReloadFullyBookedSponsorshipDatesAsync();
+RefreshSponsorshipEligibility();
             RefreshCanSave();
         }
 

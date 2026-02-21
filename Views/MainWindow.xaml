@@ -138,16 +138,32 @@
                      Width="420"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      Margin="0,0,8,0"
-                     ToolTip="Examples: Dennis Shatzer | Shatzer | 1068 Lindsay | Dennis"
+                     ToolTip="Examples: Street address | First name and Last name | Phone #"
                      KeyDown="SearchBox_KeyDown"/>
 
-            <Button Content="Search"
-                    Style="{StaticResource Button.Primary}"
+            <Button Style="{StaticResource Button.Primary}"
                     Width="110"
                     Margin="0,0,8,0"
                     IsDefault="True"
                     Command="{Binding SearchCommand}"
-                    IsEnabled="{Binding IsNotBusy}"/>
+                    IsEnabled="{Binding IsNotBusy}">
+                <StackPanel Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+
+                    <!-- Glyph size -->
+                    <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               Text="&#xE721;"
+                               FontSize="18"
+                               Margin="0,0,8,0"
+                               VerticalAlignment="Center"/>
+
+                    <!-- Text size -->
+                    <TextBlock Text="Search"
+                               FontSize="16"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
 
             <!-- Never primary: stays secondary and only shows when VM says not authorized -->
             <Button x:Name="ButtonAuthorize" Content="Authorize this PC"
@@ -213,7 +229,7 @@
                   EnableColumnVirtualization="True">
             <DataGrid.Columns>
 
-                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="150" MinWidth="150"
+                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="130" MinWidth="130"
                                     ElementStyle="{StaticResource GridCellText}"/>
 
                 <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="1*" MinWidth="170"
