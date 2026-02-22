@@ -15,7 +15,7 @@ namespace CheerfulGiverNXT
         {
             InitializeComponent();
 
-            var vm = new ConstituentLookupTestViewModel();
+            var vm = new ConstituentLookupViewModel();
             DataContext = vm;
             vm.AddConstituentRequested += Vm_AddConstituentRequested;
 
@@ -37,10 +37,21 @@ namespace CheerfulGiverNXT
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            // Ctrl+Shift hotkeys for admin tools
-            if (Keyboard.Modifiers != (ModifierKeys.Control | ModifierKeys.Shift)) return;
+            // Ctrl+F12 opens Campaigns admin
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+                && (e.Key == Key.F12 || e.SystemKey == Key.F12))
+            {
+                e.Handled = true;
+                var win = new CampaignsAdminWindow { Owner = this };
+                win.ShowDialog();
+                return;
+            }
 
-            if (e.Key == Key.S)
+            // Ctrl+Shift hotkeys for admin tools (tolerant of extra modifiers)
+            if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != (ModifierKeys.Control | ModifierKeys.Shift))
+                return;
+
+            if (e.Key == Key.S || e.SystemKey == Key.S)
             {
                 // Ctrl+Shift+S opens Admin Secrets
                 e.Handled = true;
@@ -48,19 +59,32 @@ namespace CheerfulGiverNXT
                 var win = new AdminSecretsWindow { Owner = this };
                 win.ShowDialog();
 
-                if (DataContext is ConstituentLookupTestViewModel vm)
+                if (DataContext is ConstituentLookupViewModel vm)
                     _ = vm.RefreshAuthPreviewAsync();
+
+                return;
             }
-            else if (e.Key == Key.C)
+
+            if (e.Key == Key.C || e.SystemKey == Key.C)
             {
                 // Ctrl+Shift+C opens Gift Match Challenge Admin
                 e.Handled = true;
                 var win = new GiftMatchAdminWindow { Owner = this };
                 win.ShowDialog();
+                return;
+            }
+
+            if (e.Key == Key.F || e.SystemKey == Key.F)
+            {
+                // Ctrl+Shift+F opens First-time giver fund exclusions admin
+                e.Handled = true;
+                var win = new FirstTimeFundExclusionsWindow { Owner = this };
+                win.ShowDialog();
+                return;
             }
         }
 
-        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupTestViewModel.AddConstituentRequestedEventArgs e)
+        private void Vm_AddConstituentRequested(object? sender, ConstituentLookupViewModel.AddConstituentRequestedEventArgs e)
         {
             var result = MessageBox.Show(
                 "No matches found after 3 searches.\n\nWould you like to create a new constituent record?",
@@ -77,7 +101,7 @@ namespace CheerfulGiverNXT
             var win = new AddConstituentWindow(e.SearchText) { Owner = this };
             var ok = win.ShowDialog() == true;
 
-            if (ok && DataContext is ConstituentLookupTestViewModel vm)
+            if (ok && DataContext is ConstituentLookupViewModel vm)
             {
                 if (win.CreatedConstituentId is int id)
                     vm.StatusText = $"Created constituent {win.DraftDisplayName} (Constituent ID: {id}).";
@@ -106,7 +130,7 @@ namespace CheerfulGiverNXT
         {
             if (e.Key != Key.Enter) return;
 
-            if (DataContext is ConstituentLookupTestViewModel vm && vm.SearchCommand.CanExecute(null))
+            if (DataContext is ConstituentLookupViewModel vm && vm.SearchCommand.CanExecute(null))
             {
                 vm.SearchCommand.Execute(null);
                 e.Handled = true;
@@ -115,7 +139,7 @@ namespace CheerfulGiverNXT
 
         private async void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (DataContext is not ConstituentLookupTestViewModel vm) return;
+            if (DataContext is not ConstituentLookupViewModel vm) return;
             if (vm.SelectedRow is null) return;
 
             try

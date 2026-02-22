@@ -39,6 +39,9 @@ namespace CheerfulGiverNXT
         /// <summary>Gift matching challenges + anonymous match-gifts.</summary>
         public static IGiftMatchService GiftMatchService { get; private set; } = null!;
 
+        /// <summary>First-time giver rules (fund exclusions from SQL).</summary>
+        public static IFirstTimeGiverRules FirstTimeGiverRules { get; private set; } = null!;
+
         protected override async void OnStartup(StartupEventArgs e)
         {
             this.DispatcherUnhandledException += (_, args) =>
@@ -103,6 +106,10 @@ namespace CheerfulGiverNXT
 
                 // NEW: gift match challenges (local-only; no SKY API calls for matches)
                 GiftMatchService = new SqlGiftMatchService(sqlConnStr, CampaignContext, GiftWorkflowStore);
+
+                // NEW: first-time giver rules (fund exclusions)
+                FirstTimeGiverRules = new SqlFirstTimeGiverRules(sqlConnStr, CampaignContext);
+
 
                 // Show main window (no StartupUri in App.xaml)
                 var main = new MainWindow();

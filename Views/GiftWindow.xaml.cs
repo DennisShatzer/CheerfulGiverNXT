@@ -20,6 +20,7 @@ namespace CheerfulGiverNXT
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
         private readonly GiftWorkflowContext _workflow;
         private bool _isNewRadioConstituent;
+        private bool _isFirstTimeGiver;
 
         private DispatcherTimer? _blackoutTimer;
 
@@ -35,8 +36,83 @@ namespace CheerfulGiverNXT
             DataContext = vm;
 
             HookSponsorshipBlackoutDates(vm);
+            HookGiftHistoryAutoCollapseOnLoad(vm);
 
+            PreviewKeyDown += GiftWindow_PreviewKeyDown;
             Loaded += GiftWindow_Loaded;
+        }
+
+        private void GiftWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            Window? dialog = null;
+
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+                && (e.Key == Key.F12 || e.SystemKey == Key.F12))
+            {
+                dialog = new CampaignsAdminWindow();
+            }
+            else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
+                     && (e.Key == Key.F || e.SystemKey == Key.F))
+            {
+                dialog = new FirstTimeFundExclusionsWindow();
+            }
+
+            if (dialog is null) return;
+
+            e.Handled = true;
+            dialog.Owner = this;
+            dialog.ShowDialog();
+        }
+
+        private void HookGiftHistoryAutoCollapseOnLoad(GiftEntryViewModel vm)
+        {
+            // Cosmetic: If no gifts exist for the current campaign, start with the history expander collapsed
+            // so the operator doesn't see an empty grid.
+            if (GiftHistoryExpander is null) return;
+
+            bool applied = false;
+
+            void Unhook()
+            {
+                vm.PropertyChanged -= Vm_PropertyChanged;
+                vm.ExistingCampaignGifts.CollectionChanged -= ExistingCampaignGifts_CollectionChanged;
+            }
+
+            void TryApply()
+            {
+                if (applied) return;
+                if (vm.IsLoadingExistingCampaignGifts) return;
+
+                // Only collapse for the normal "no gifts" case (not when an error message is present).
+                var hasError = !string.IsNullOrWhiteSpace(vm.ExistingCampaignGiftsStatus)
+                               && !string.Equals(vm.ExistingCampaignGiftsStatus.Trim(), "No gifts found.", StringComparison.OrdinalIgnoreCase);
+
+                if (!hasError && vm.ExistingCampaignGifts.Count == 0)
+                    GiftHistoryExpander.IsExpanded = false;
+
+                applied = true;
+                Unhook();
+            }
+
+            void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+            {
+                if (e.PropertyName == nameof(GiftEntryViewModel.IsLoadingExistingCampaignGifts)
+                    || e.PropertyName == nameof(GiftEntryViewModel.ExistingCampaignGiftsStatus))
+                {
+                    TryApply();
+                }
+            }
+
+            void ExistingCampaignGifts_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+            {
+                TryApply();
+            }
+
+            vm.PropertyChanged += Vm_PropertyChanged;
+            vm.ExistingCampaignGifts.CollectionChanged += ExistingCampaignGifts_CollectionChanged;
+
+            // In case gifts were already loaded before the window finished constructing.
+            TryApply();
         }
 
         private async void GiftWindow_Loaded(object sender, RoutedEventArgs e)
@@ -54,26 +130,50 @@ namespace CheerfulGiverNXT
 
             try
             {
-                var tokens = LoadRadioFundTokens();
-                if (tokens.Length == 0)
+                // Query the donor's contributed funds from RE NXT (via SKY API) once,
+                // then evaluate both:
+                //  - New Radio Constituent (based on RadioFunds tokens)
+                //  - First Time Giver (based on SQL fund exclusions for the active campaign)
+                var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 1000);
+
+                // 1) New Radio Constituent
+                var radioTokens = LoadRadioFundTokens();
+                if (radioTokens.Length == 0)
                 {
                     _isNewRadioConstituent = false;
-                    return;
+                }
+                else
+                {
+                    var hasRadioFundGift = funds.Any(f => radioTokens.Any(t => TokenMatches(t, f.Name)));
+                    _isNewRadioConstituent = !hasRadioFundGift;
                 }
 
-                var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 1000);
-                var hasMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
-
-                _isNewRadioConstituent = !hasMatch;
+                // 2) First Time Giver (respects dbo.CGFirstTimeFundExclusions for the active campaign)
+                var excludedTokens = await App.FirstTimeGiverRules.GetExcludedFundTokensAsync();
+                if (funds.Count == 0)
+                {
+                    _isFirstTimeGiver = true;
+                }
+                else if (excludedTokens.Length == 0)
+                {
+                    _isFirstTimeGiver = false;
+                }
+                else
+                {
+                    var hasCountedGift = funds.Any(f => !excludedTokens.Any(t => TokenMatches(t, f.Name)));
+                    _isFirstTimeGiver = !hasCountedGift;
+                }
             }
             catch
             {
                 _isNewRadioConstituent = false;
+                _isFirstTimeGiver = false;
             }
             finally
             {
                 // Persist into workflow so local SQL includes it.
                 _workflow.IsNewRadioConstituent = _isNewRadioConstituent;
+                _workflow.IsFirstTimeGiver = _isFirstTimeGiver;
 
                 ApplyBanner();
                 Mouse.OverrideCursor = null;
@@ -83,8 +183,11 @@ namespace CheerfulGiverNXT
 
         private void ApplyBanner()
         {
-            if (NewConstituentBanner is null) return;
-            NewConstituentBanner.Visibility = _isNewRadioConstituent ? Visibility.Visible : Visibility.Collapsed;
+            if (NewConstituentBanner is not null)
+                NewConstituentBanner.Visibility = _isNewRadioConstituent ? Visibility.Visible : Visibility.Collapsed;
+
+            if (FirstTimeGiverBanner is not null)
+                FirstTimeGiverBanner.Visibility = _isFirstTimeGiver ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static string[] LoadRadioFundTokens()

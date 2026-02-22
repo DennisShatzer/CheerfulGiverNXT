@@ -173,7 +173,22 @@
                                    Foreground="#065F46"/>
                     </Border>
 
-                    <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
+                    
+                    <!-- Visible only when IsFirstTimeGiver == true (set by code-behind) -->
+                    <Border x:Name="FirstTimeGiverBanner"
+                            Background="#DBEAFE"
+                            BorderBrush="#BFDBFE"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            Margin="0,0,0,8"
+                            Visibility="Collapsed">
+                        <TextBlock Text="FIRST TIME GIVER (no prior counted gifts found)"
+                                   FontWeight="SemiBold"
+                                   Foreground="#1E3A8A"/>
+                    </Border>
+
+<TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
                     <TextBlock Text="{Binding ConstituentSummary}"
                                Margin="0,4,0,0"
                                TextWrapping="Wrap"/>
@@ -266,7 +281,7 @@
         <!-- Prior gifts (this campaign) + comments -->
         <StackPanel Grid.Row="2" Margin="0,12,0,0">
 
-            <Expander IsExpanded="True"
+            <Expander x:Name="GiftHistoryExpander" IsExpanded="True"
                       Margin="0,0,0,12"
                       Header="{Binding ExistingCampaignGiftsHeader}">
                 <StackPanel>

@@ -7,6 +7,9 @@ using CheerfulGiverNXT.Data;
 using CheerfulGiverNXT.Infrastructure;
 using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.Workflow;
+using Microsoft.Data.SqlClient;
+using System.Configuration;
+using System.Data;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -299,16 +302,69 @@ namespace CheerfulGiverNXT.ViewModels
             private set { _existingCampaignGiftsStatus = value; OnPropertyChanged(); }
         }
 
+
+
+        private string _campaignNameForHeader = "";
+        private int _campaignNameLoadVersion;
+
+        private async Task LoadCampaignNameAsync(int campaignRecordId)
+        {
+            var version = Interlocked.Increment(ref _campaignNameLoadVersion);
+
+            string name = "";
+            try
+            {
+                var cs = ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString;
+                if (!string.IsNullOrWhiteSpace(cs))
+                {
+                    await using var conn = new SqlConnection(cs);
+                    await conn.OpenAsync().ConfigureAwait(true);
+
+                    const string sql = @"
+SELECT TOP (1) CampaignName
+FROM dbo.CGCampaigns
+WHERE CampaignRecordId = @Id;";
+
+                    await using var cmd = new SqlCommand(sql, conn);
+                    cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = campaignRecordId });
+
+                    var obj = await cmd.ExecuteScalarAsync().ConfigureAwait(true);
+                    name = (obj is null || obj is DBNull) ? "" : (Convert.ToString(obj) ?? "").Trim();
+                }
+            }
+            catch
+            {
+                name = "";
+            }
+            finally
+            {
+                if (version == _campaignNameLoadVersion)
+                {
+                    _campaignNameForHeader = name;
+                    OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
+                }
+            }
+        }
+
         public string ExistingCampaignGiftsHeader
         {
             get
             {
-                var campaign = string.IsNullOrWhiteSpace(CampaignIdText) ? null : CampaignIdText.Trim();
-                var baseLabel = campaign is null ? "Prior gifts (all campaigns)" : $"Prior gifts (campaign {campaign})";
-                if (IsLoadingExistingCampaignGifts) return baseLabel + " — loading...";
-                return ExistingCampaignGifts.Count == 0 ? baseLabel : $"{baseLabel} — {ExistingCampaignGifts.Count}";
+                int? campaignRecordId = null;
+                if (int.TryParse((CampaignIdText ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cid) && cid > 0)
+                    campaignRecordId = cid;
+
+                var campaignLabel = campaignRecordId.HasValue
+                    ? (!string.IsNullOrWhiteSpace(_campaignNameForHeader) ? _campaignNameForHeader : $"Campaign {campaignRecordId.Value}")
+                    : "All campaigns";
+
+                if (IsLoadingExistingCampaignGifts)
+                    return $"{campaignLabel} gifts: loading...";
+
+                return $"{campaignLabel} gifts: {ExistingCampaignGifts.Count}";
             }
         }
+
 
         private int _giftHistoryLoadVersion;
 
@@ -517,6 +573,11 @@ namespace CheerfulGiverNXT.ViewModels
             set
             {
                 _campaignIdText = value;
+
+                if (int.TryParse((_campaignIdText ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cid) && cid > 0)
+                    _ = LoadCampaignNameAsync(cid);
+                else
+                    _campaignNameForHeader = "";
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
                 _ = ReloadExistingCampaignGiftsAsync();
@@ -806,9 +867,10 @@ namespace CheerfulGiverNXT.ViewModels
             // Friendly status.
             if (SponsorshipDate.HasValue)
             {
-                var taken = _reservedDayParts.Length == 0 ? "None" : string.Join(", ", _reservedDayParts.OrderBy(x => x));
                 var avail = string.Join(", ", filtered.Select(x => x.Display));
-                SponsorshipAvailabilityStatus = $"Taken: {taken}. Available: {avail}.";
+                SponsorshipAvailabilityStatus = string.IsNullOrWhiteSpace(avail)
+                    ? ""
+                    : $"Available sponsorship slots: {avail}.";
             }
             else
             {
