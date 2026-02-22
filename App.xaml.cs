@@ -1,6 +1,7 @@
 using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Data;
 using CheerfulGiverNXT.Services;
+using CheerfulGiverNXT.Infrastructure.Logging;
 using System;
 using System.Configuration;
 using System.Net.Http;
@@ -32,8 +33,35 @@ namespace CheerfulGiverNXT
         /// <summary>NEW: workflow persistence into SQL Express (same DB as secrets).</summary>
         public static IGiftWorkflowStore GiftWorkflowStore { get; private set; } = null!;
 
+        /// <summary>Current campaign context (CampaignRecordId source of truth).</summary>
+        public static ICampaignContext CampaignContext { get; private set; } = null!;
+
+        /// <summary>Gift matching challenges + anonymous match-gifts.</summary>
+        public static IGiftMatchService GiftMatchService { get; private set; } = null!;
+
         protected override async void OnStartup(StartupEventArgs e)
         {
+            this.DispatcherUnhandledException += (_, args) =>
+            {
+                try
+                {
+                    var path = ErrorLogger.Log(args.Exception, "DispatcherUnhandledException");
+                    MessageBox.Show(
+                        "An unexpected error occurred and was logged to:\n\n" + path + "\n\n" +
+                        "Please attach this file when reporting the issue.",
+                        "Unhandled exception",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                args.Handled = true;
+                Shutdown();
+            };
+
             base.OnStartup(e);
 
             try
@@ -69,6 +97,12 @@ namespace CheerfulGiverNXT
 
                 // NEW: workflow persistence store
                 GiftWorkflowStore = new SqlGiftWorkflowStore(sqlConnStr);
+
+                // NEW: current campaign context
+                CampaignContext = new SqlCampaignContext(sqlConnStr);
+
+                // NEW: gift match challenges (local-only; no SKY API calls for matches)
+                GiftMatchService = new SqlGiftMatchService(sqlConnStr, CampaignContext, GiftWorkflowStore);
 
                 // Show main window (no StartupUri in App.xaml)
                 var main = new MainWindow();

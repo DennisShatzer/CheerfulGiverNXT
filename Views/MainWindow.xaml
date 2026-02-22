@@ -120,6 +120,16 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
+
+        <!-- ===== Status bar progress (force Microsoft blue, align with status text) ===== -->
+        <Style x:Key="StatusProgressBar" TargetType="{x:Type ProgressBar}">
+            <!-- Microsoft blue (Windows 10 accent) -->
+            <Setter Property="Foreground" Value="#FF0078D4"/>
+            <Setter Property="Background" Value="#FFE6E6E6"/>
+            <!-- Match the larger status text better than the default tiny bar -->
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="12">
@@ -131,48 +141,32 @@
         </Grid.RowDefinitions>
 
         <!-- Search row -->
-        <DockPanel Grid.Row="0" LastChildFill="True">
-            <TextBlock Style="{StaticResource LabelText}" Text="Search:" Margin="0,0,8,0"/>
+        <DockPanel Grid.Row="0" LastChildFill="True" HorizontalAlignment="Center">
+            <TextBlock Style="{StaticResource LabelText}" Text="Search:" Margin="0,0,8,8"/>
             <TextBox x:Name="SearchTextBox"
                      Style="{StaticResource InputTextBox}"
                      Width="420"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      Margin="0,0,8,0"
-                     ToolTip="Examples: Street address | First name and Last name | Phone #"
-                     KeyDown="SearchBox_KeyDown"/>
+                     ToolTip="Examples: Street # and street name | First name and part of last name | Phone # | Email"
+                     KeyDown="SearchBox_KeyDown" VerticalContentAlignment="Bottom"/>
 
-            <Button Style="{StaticResource Button.Primary}"
+            <Button Content="Search"
+                    Style="{StaticResource Button.Primary}"
                     Width="110"
                     Margin="0,0,8,0"
                     IsDefault="True"
                     Command="{Binding SearchCommand}"
-                    IsEnabled="{Binding IsNotBusy}">
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center">
+                    IsEnabled="{Binding IsNotBusy}"/>
 
-                    <!-- Glyph size -->
-                    <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                               Text="&#xE721;"
-                               FontSize="18"
-                               Margin="0,0,8,0"
-                               VerticalAlignment="Center"/>
-
-                    <!-- Text size -->
-                    <TextBlock Text="Search"
-                               FontSize="16"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
-
-            <!-- Never primary: stays secondary and only shows when VM says not authorized -->
+            <!-- Never primary: stays secondary and only shows when VM says not authorized 
             <Button x:Name="ButtonAuthorize" Content="Authorize this PC"
                     Style="{StaticResource Button.Secondary}"
                     Width="140"
                     Margin="0,0,8,0"
                     Command="{Binding LoginCommand}"
                     IsEnabled="{Binding IsNotBusy}"
-                    Visibility="{Binding IsNotAuthorized, Converter={StaticResource BoolToVis}}"/>
+                    Visibility="{Binding IsNotAuthorized, Converter={StaticResource BoolToVis}}"/> -->
         </DockPanel>
 
         <!-- Auth debug (read-only) -->
@@ -229,7 +223,7 @@
                   EnableColumnVirtualization="True">
             <DataGrid.Columns>
 
-                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="130" MinWidth="130"
+                <DataGridTextColumn Header="Constituent ID" Binding="{Binding Id}" Width="150" MinWidth="150"
                                     ElementStyle="{StaticResource GridCellText}"/>
 
                 <DataGridTextColumn Header="Full name" Binding="{Binding FullName}" Width="1*" MinWidth="170"
@@ -265,8 +259,10 @@
                            TextAlignment="Right"/>
             </StatusBarItem>
 
-            <StatusBarItem HorizontalAlignment="Right">
-                <ProgressBar Width="160" Height="14" IsIndeterminate="True"
+            <StatusBarItem HorizontalAlignment="Center">
+                <ProgressBar Style="{StaticResource StatusProgressBar}"
+                             Width="180"
+                             IsIndeterminate="True"
                              Visibility="{Binding BusyVisibility}"/>
             </StatusBarItem>
         </StatusBar>

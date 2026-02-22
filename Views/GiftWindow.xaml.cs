@@ -30,7 +30,7 @@ namespace CheerfulGiverNXT
 
             InitializeComponent();
 
-            var vm = new GiftEntryViewModel(row, _workflow, App.GiftService, App.GiftWorkflowStore);
+            var vm = new GiftEntryViewModel(row, _workflow, App.GiftService, App.GiftWorkflowStore, App.CampaignContext, App.GiftMatchService);
             vm.RequestClose += (_, __) => Close();
             DataContext = vm;
 

@@ -98,29 +98,89 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Constituent header + banner -->
-        <Border BorderBrush="#DDD" BorderThickness="1" Padding="10" CornerRadius="6">
-            <StackPanel>
-                <!-- Visible only when NewConstituent == true (set by code-behind) -->
-                <Border x:Name="NewConstituentBanner"
-                        Background="#D1FAE5"
-                        BorderBrush="#A7F3D0"
-                        BorderThickness="1"
-                        CornerRadius="4"
-                        Padding="8"
-                        Margin="0,0,0,8"
-                        Visibility="Collapsed">
-                    <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
-                               FontWeight="SemiBold"
-                               Foreground="#065F46"/>
-                </Border>
+        <!-- Match banner (collapses when no active challenge), then constituent header -->
+        <StackPanel Grid.Row="0">
 
-                <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
-                <TextBlock Text="{Binding ConstituentSummary}"
-                           Margin="0,4,0,0"
-                           TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
+            <!-- Remaining Match Budget banner (oldest active challenge) -->
+            <Border Background="#FFE8F1FB"
+                    BorderBrush="#FFB7D7F7"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="10"
+                    Margin="0,0,0,10"
+                    Visibility="{Binding ShowMatchBanner, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Row="0" Grid.Column="0">
+                        <TextBlock Text="{Binding MatchBannerTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="#FF0B4A8B"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="Remaining: " Foreground="#FF0B4A8B"/>
+                            <TextBlock Text="{Binding ActiveMatchRemaining, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="#FF0B4A8B"/>
+                            <TextBlock Text=" of " Foreground="#FF0B4A8B"/>
+                            <TextBlock Text="{Binding ActiveMatchBudget, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="#FF0B4A8B"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding TotalMatchRemaining, StringFormat=Total remaining across all challenges: {0:C}}"
+                                   FontSize="14"
+                                   Foreground="#FF2B5C8A"
+                                   Margin="0,3,0,0"
+                                   Visibility="{Binding HasMultipleActiveMatchChallenges, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               VerticalAlignment="Top"
+                               Margin="12,0,0,0"
+                               Text="{Binding ActiveMatchUsed, StringFormat=Used {0:C}}"
+                               FontSize="14"
+                               Foreground="#FF2B5C8A"/>
+
+                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2"
+                                 Height="18"
+                                 Margin="0,10,0,0"
+                                 Minimum="0"
+                                 Maximum="{Binding ActiveMatchBudget, Mode=OneWay}"
+                                 Value="{Binding ActiveMatchUsed, Mode=OneWay}"
+                                 Foreground="#FF0078D4"
+                                 Background="#FFE6E6E6"/>
+                </Grid>
+            </Border>
+
+            <!-- Constituent header + banner -->
+            <Border BorderBrush="#DDD" BorderThickness="1" Padding="10" CornerRadius="6">
+                <StackPanel>
+                    <!-- Visible only when NewConstituent == true (set by code-behind) -->
+                    <Border x:Name="NewConstituentBanner"
+                            Background="#D1FAE5"
+                            BorderBrush="#A7F3D0"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            Margin="0,0,0,8"
+                            Visibility="Collapsed">
+                        <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
+                                   FontWeight="SemiBold"
+                                   Foreground="#065F46"/>
+                    </Border>
+
+                    <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
+                    <TextBlock Text="{Binding ConstituentSummary}"
+                               Margin="0,4,0,0"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
 
         <!-- Entry fields -->
         <Grid Grid.Row="1" Margin="0,12,0,0">

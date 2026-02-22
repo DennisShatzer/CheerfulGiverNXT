@@ -21,6 +21,7 @@ namespace CheerfulGiverNXT
                 WireShowHideHandlers();
                 WireButtons();
                 await SafeRefreshAsync();
+                UpdateSaveButtonsState();
             };
         }
 
@@ -38,30 +39,34 @@ namespace CheerfulGiverNXT
 
         private void WireShowHideHandlers()
         {
-            ShowSubscriptionKeyCheckBox.Checked += (_, __) => ToggleSecretVisibility(SubscriptionKeyPasswordBox, SubscriptionKeyTextBox, true);
-            ShowSubscriptionKeyCheckBox.Unchecked += (_, __) => ToggleSecretVisibility(SubscriptionKeyPasswordBox, SubscriptionKeyTextBox, false);
+            ShowSubscriptionKeyCheckBox.Checked += (_, __) => { ToggleSecretVisibility(SubscriptionKeyPasswordBox, SubscriptionKeyTextBox, true); UpdateSaveButtonsState(); };
+            ShowSubscriptionKeyCheckBox.Unchecked += (_, __) => { ToggleSecretVisibility(SubscriptionKeyPasswordBox, SubscriptionKeyTextBox, false); UpdateSaveButtonsState(); };
             SubscriptionKeyPasswordBox.PasswordChanged += (_, __) =>
             {
                 if (ShowSubscriptionKeyCheckBox.IsChecked == true)
                     SubscriptionKeyTextBox.Text = SubscriptionKeyPasswordBox.Password;
+                UpdateSaveButtonsState();
             };
             SubscriptionKeyTextBox.TextChanged += (_, __) =>
             {
                 if (ShowSubscriptionKeyCheckBox.IsChecked == true)
                     SubscriptionKeyPasswordBox.Password = SubscriptionKeyTextBox.Text;
+                UpdateSaveButtonsState();
             };
 
-            ShowClientSecretCheckBox.Checked += (_, __) => ToggleSecretVisibility(ClientSecretPasswordBox, ClientSecretTextBox, true);
-            ShowClientSecretCheckBox.Unchecked += (_, __) => ToggleSecretVisibility(ClientSecretPasswordBox, ClientSecretTextBox, false);
+            ShowClientSecretCheckBox.Checked += (_, __) => { ToggleSecretVisibility(ClientSecretPasswordBox, ClientSecretTextBox, true); UpdateSaveButtonsState(); };
+            ShowClientSecretCheckBox.Unchecked += (_, __) => { ToggleSecretVisibility(ClientSecretPasswordBox, ClientSecretTextBox, false); UpdateSaveButtonsState(); };
             ClientSecretPasswordBox.PasswordChanged += (_, __) =>
             {
                 if (ShowClientSecretCheckBox.IsChecked == true)
                     ClientSecretTextBox.Text = ClientSecretPasswordBox.Password;
+                UpdateSaveButtonsState();
             };
             ClientSecretTextBox.TextChanged += (_, __) =>
             {
                 if (ShowClientSecretCheckBox.IsChecked == true)
                     ClientSecretPasswordBox.Password = ClientSecretTextBox.Text;
+                UpdateSaveButtonsState();
             };
         }
 
@@ -91,7 +96,15 @@ namespace CheerfulGiverNXT
         private string GetEnteredClientSecret() =>
             ShowClientSecretCheckBox.IsChecked == true ? ClientSecretTextBox.Text : ClientSecretPasswordBox.Password;
 
-        private async Task SaveSubscriptionKeyAsync()
+        
+        private void UpdateSaveButtonsState()
+        {
+            // Disable Save buttons unless the admin has typed a value into the corresponding field.
+            SaveSubscriptionKeyButton.IsEnabled = !string.IsNullOrWhiteSpace((GetEnteredSubscriptionKey() ?? "").Trim());
+            SaveClientSecretButton.IsEnabled = !string.IsNullOrWhiteSpace((GetEnteredClientSecret() ?? "").Trim());
+        }
+
+private async Task SaveSubscriptionKeyAsync()
         {
             var value = (GetEnteredSubscriptionKey() ?? "").Trim();
             if (string.IsNullOrWhiteSpace(value))
@@ -190,12 +203,14 @@ namespace CheerfulGiverNXT
         {
             SubscriptionKeyPasswordBox.Clear();
             SubscriptionKeyTextBox.Text = "";
+            UpdateSaveButtonsState();
         }
 
         private void ClearClientSecretInputs()
         {
             ClientSecretPasswordBox.Clear();
             ClientSecretTextBox.Text = "";
+            UpdateSaveButtonsState();
         }
 
         private async Task RunBusyAsync(Func<Task> action)
@@ -211,12 +226,14 @@ namespace CheerfulGiverNXT
                 Mouse.OverrideCursor = null;
                 IsEnabled = true;
                 await SafeRefreshAsync();
+                UpdateSaveButtonsState();
             }
         }
 
         private async void Refresh_Click(object sender, RoutedEventArgs e)
         {
             await SafeRefreshAsync();
+                UpdateSaveButtonsState();
         }
     }
 }

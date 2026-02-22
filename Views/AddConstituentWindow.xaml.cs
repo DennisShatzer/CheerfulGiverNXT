@@ -115,7 +115,7 @@ namespace CheerfulGiverNXT
                 if (created.Warnings.Count > 0)
                 {
                     MessageBox.Show(
-                        $"Created constituent ID {created.Id}.\n\nHowever, some contact details could not be saved:\n\n- " +
+                        $"Created Constituent ID {created.Id}.\n\nHowever, some contact details could not be saved:\n\n- " +
                         string.Join("\n- ", created.Warnings),
                         "Created with warnings",
                         MessageBoxButton.OK,

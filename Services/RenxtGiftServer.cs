@@ -119,7 +119,9 @@ namespace CheerfulGiverNXT.Services
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
-                throw new InvalidOperationException($"HTTP {(int)resp.StatusCode}: {body}");
+                throw new InvalidOperationException(
+                    $"HTTP {(int)resp.StatusCode}: {body}{Environment.NewLine}" +
+                    $"Request payload: {createJson}");
 
             var giftId = ExtractIdOrThrow(body);
 

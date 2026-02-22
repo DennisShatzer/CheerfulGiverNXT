@@ -168,7 +168,7 @@ namespace CheerfulGiverNXT.ViewModels
             catch (InvalidOperationException)
             {
                 IsAuthorized = false;
-                AccessToken = "(not authorized – click Authorize this PC)";
+                AccessToken = "(not authorized – open Admin Secrets (Ctrl+Shift+S) to authorize this PC)";
             }
             catch
             {

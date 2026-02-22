@@ -17,6 +17,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.ViewModels
 {
@@ -62,6 +63,81 @@ namespace CheerfulGiverNXT.ViewModels
         private readonly GiftWorkflowContext _workflow;
         private readonly IGiftWorkflowStore _workflowStore;
 
+        // NEW: campaign context (CampaignRecordId source of truth)
+        private readonly ICampaignContext _campaignContext;
+        private int? _campaignRecordIdFromContext;
+
+        // NEW: gift match challenges
+        private readonly IGiftMatchService _giftMatch;
+
+        // Match banner state (oldest active challenge is shown; matches are applied oldest-first)
+        private bool _showMatchBanner;
+        public bool ShowMatchBanner
+        {
+            get => _showMatchBanner;
+            private set { _showMatchBanner = value; OnPropertyChanged(); }
+        }
+
+        private string _activeMatchChallengeName = "";
+        public string ActiveMatchChallengeName
+        {
+            get => _activeMatchChallengeName;
+            private set { _activeMatchChallengeName = value; OnPropertyChanged(); OnPropertyChanged(nameof(MatchBannerTitle)); }
+        }
+
+        private int _otherActiveMatchChallengeCount;
+        public int OtherActiveMatchChallengeCount
+        {
+            get => _otherActiveMatchChallengeCount;
+            private set
+            {
+                _otherActiveMatchChallengeCount = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(HasMultipleActiveMatchChallenges));
+                OnPropertyChanged(nameof(MatchBannerTitle));
+            }
+        }
+
+        public bool HasMultipleActiveMatchChallenges => OtherActiveMatchChallengeCount > 0;
+
+        public string MatchBannerTitle
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(ActiveMatchChallengeName)) return "Matching challenge active";
+                if (OtherActiveMatchChallengeCount <= 0) return $"Matching challenge: {ActiveMatchChallengeName}";
+                return $"Matching challenge: {ActiveMatchChallengeName} (+{OtherActiveMatchChallengeCount} more)";
+            }
+        }
+
+        private decimal _activeMatchBudget;
+        public decimal ActiveMatchBudget
+        {
+            get => _activeMatchBudget;
+            private set { _activeMatchBudget = value; OnPropertyChanged(); }
+        }
+
+        private decimal _activeMatchUsed;
+        public decimal ActiveMatchUsed
+        {
+            get => _activeMatchUsed;
+            private set { _activeMatchUsed = value; OnPropertyChanged(); }
+        }
+
+        private decimal _activeMatchRemaining;
+        public decimal ActiveMatchRemaining
+        {
+            get => _activeMatchRemaining;
+            private set { _activeMatchRemaining = value; OnPropertyChanged(); }
+        }
+
+        private decimal _totalMatchRemaining;
+        public decimal TotalMatchRemaining
+        {
+            get => _totalMatchRemaining;
+            private set { _totalMatchRemaining = value; OnPropertyChanged(); }
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
         public event EventHandler? RequestClose;
 
@@ -101,7 +177,47 @@ namespace CheerfulGiverNXT.ViewModels
             if (int.TryParse((_workflow.Gift.CampaignId ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out cid) && cid > 0)
                 return cid;
 
+            if (_campaignRecordIdFromContext.HasValue && _campaignRecordIdFromContext.Value > 0)
+                return _campaignRecordIdFromContext.Value;
+
             return null;
+        }
+
+        private async Task InitializeCampaignFromContextAsync()
+        {
+            try
+            {
+                // If a campaign id is already present (e.g., set by upstream code), don't overwrite.
+                var existing = string.IsNullOrWhiteSpace(CampaignIdText)
+                    ? (_workflow.Gift.CampaignId ?? "")
+                    : CampaignIdText;
+
+                if (int.TryParse((existing ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var already) && already > 0)
+                {
+                    _campaignRecordIdFromContext = already;
+                    // Normalize: keep the VM and workflow aligned.
+                    if (string.IsNullOrWhiteSpace(CampaignIdText))
+                        CampaignIdText = already.ToString(CultureInfo.InvariantCulture);
+                    if (string.IsNullOrWhiteSpace(_workflow.Gift.CampaignId))
+                        _workflow.Gift.CampaignId = already.ToString(CultureInfo.InvariantCulture);
+                    return;
+                }
+
+                var id = await _campaignContext.GetCurrentCampaignRecordIdAsync().ConfigureAwait(true);
+                if (!id.HasValue || id.Value <= 0) return;
+
+                _campaignRecordIdFromContext = id.Value;
+
+                // Set CampaignIdText (hidden) so:
+                // - SKY API pledge uses campaign_id
+                // - gift history and sponsorship lookups are campaign-scoped
+                CampaignIdText = id.Value.ToString(CultureInfo.InvariantCulture);
+                _workflow.Gift.CampaignId = CampaignIdText;
+            }
+            catch
+            {
+                // Best-effort; campaign may be optional.
+            }
         }
 
         private async Task ReloadFullyBookedSponsorshipDatesAsync()
@@ -238,7 +354,9 @@ namespace CheerfulGiverNXT.ViewModels
             {
                 var spouse = string.IsNullOrWhiteSpace(_row.Spouse) ? "" : _row.Spouse.Trim();
 
-                var line1 = $"ID: {_row.Id}" + (string.IsNullOrWhiteSpace(spouse) ? "" : $" Spouse: {spouse}");
+                // Display-only spacing between Constituent ID and Partner for readability.
+                // (Does not change any underlying property names/logic.)
+                var line1 = $"Constituent ID: {_row.Id}" + (string.IsNullOrWhiteSpace(spouse) ? "" : $"    —    Partner: {spouse}");
 
                 var street = (_row.Street ?? "").Trim();
                 var city = (_row.City ?? "").Trim();
@@ -518,12 +636,16 @@ namespace CheerfulGiverNXT.ViewModels
             RenxtConstituentLookupService.ConstituentGridRow row,
             GiftWorkflowContext workflow,
             RenxtGiftServer giftServer,
-            IGiftWorkflowStore workflowStore)
+            IGiftWorkflowStore workflowStore,
+            ICampaignContext campaignContext,
+            IGiftMatchService giftMatchService)
         {
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _workflow = workflow ?? throw new ArgumentNullException(nameof(workflow));
             _gifts = giftServer ?? throw new ArgumentNullException(nameof(giftServer));
             _workflowStore = workflowStore ?? throw new ArgumentNullException(nameof(workflowStore));
+            _campaignContext = campaignContext ?? throw new ArgumentNullException(nameof(campaignContext));
+            _giftMatch = giftMatchService ?? throw new ArgumentNullException(nameof(giftMatchService));
 
             // Default to One-time.
             _selectedPreset = FrequencyPresets[0];
@@ -543,11 +665,60 @@ namespace CheerfulGiverNXT.ViewModels
             ExistingCampaignGifts.CollectionChanged += (_, __) =>
                 OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
 
+            // Load the active campaign id (best-effort) and let the CampaignIdText setter
+            // trigger the dependent reloads.
+            _ = InitializeCampaignFromContextAsync();
+
+            // Load match challenge status (best-effort). This drives the "Remaining Match Budget" banner.
+            _ = ReloadMatchBannerAsync();
+
+            // Fallback initial loads (in case campaign id isn't available).
             _ = ReloadExistingCampaignGiftsAsync();
             _ = ReloadFullyBookedSponsorshipDatesAsync();
             _ = ReloadReservedDayPartsForSelectedDateAsync();
             RefreshSponsorshipEligibility();
             RefreshCanSave();
+        }
+
+        private async Task ReloadMatchBannerAsync()
+        {
+            try
+            {
+                var snap = await _giftMatch.GetAdminSnapshotAsync().ConfigureAwait(true);
+
+                // Only show active challenges with remaining budget.
+                var active = (snap.Challenges ?? Array.Empty<MatchChallengeAdminRow>())
+                    .Where(c => c.IsActive && c.Remaining > 0m)
+                    .OrderBy(c => c.CreatedAtUtc)
+                    .ThenBy(c => c.ChallengeRecordId)
+                    .ToArray();
+
+                if (active.Length == 0)
+                {
+                    ShowMatchBanner = false;
+                    ActiveMatchChallengeName = "";
+                    OtherActiveMatchChallengeCount = 0;
+                    ActiveMatchBudget = 0m;
+                    ActiveMatchUsed = 0m;
+                    ActiveMatchRemaining = 0m;
+                    TotalMatchRemaining = 0m;
+                    return;
+                }
+
+                var current = active[0];
+                ActiveMatchChallengeName = current.Name ?? "";
+                OtherActiveMatchChallengeCount = Math.Max(0, active.Length - 1);
+                ActiveMatchBudget = current.Budget;
+                ActiveMatchRemaining = current.Remaining;
+                ActiveMatchUsed = Math.Max(0m, current.Budget - current.Remaining);
+                TotalMatchRemaining = active.Sum(c => c.Remaining);
+                ShowMatchBanner = true;
+            }
+            catch
+            {
+                // Banner is best-effort; never block gift entry.
+                ShowMatchBanner = false;
+            }
         }
 
         private SponsorshipOption[] ComputeEligibleSponsorshipOptionsByAmount()
@@ -681,6 +852,11 @@ namespace CheerfulGiverNXT.ViewModels
 
         private async Task SaveAsync()
         {
+            // Ensure we have the current CampaignRecordId before validating sponsorship availability.
+            // This prevents querying sponsorship reservations across *all* campaigns (false positives).
+            if (string.IsNullOrWhiteSpace(CampaignIdText) && _campaignRecordIdFromContext is null)
+                await InitializeCampaignFromContextAsync().ConfigureAwait(true);
+
             if (!TryParseAmount(out var amount) || amount <= 0m) { StatusText = "Enter a valid amount."; return; }
             if (!PledgeDate.HasValue) { StatusText = "Select a pledge date."; return; }
             if (!FirstInstallmentDate.HasValue) { StatusText = "Select a first installment date."; return; }
@@ -690,6 +866,13 @@ namespace CheerfulGiverNXT.ViewModels
             // Sponsorship slot validation (prevents saving into an already-booked date/slot).
             if (ShowSponsorshipSelector)
             {
+                var campaignRecordIdForSponsorship = GetCampaignRecordIdForSponsorship();
+                if (!campaignRecordIdForSponsorship.HasValue)
+                {
+                    StatusText = "No active campaign is configured. Set the active CampaignRecordId in your campaign configuration tool.";
+                    return;
+                }
+
                 if (!SponsorshipDate.HasValue)
                 {
                     StatusText = "Select a sponsorship date.";
@@ -707,9 +890,8 @@ namespace CheerfulGiverNXT.ViewModels
                 {
                     try
                     {
-                        var campaignRecordId = GetCampaignRecordIdForSponsorship();
                         var reserved = await _workflowStore
-                            .ListReservedDayPartsAsync(campaignRecordId, SponsorshipDate.Value.Date)
+                            .ListReservedDayPartsAsync(campaignRecordIdForSponsorship, SponsorshipDate.Value.Date)
                             .ConfigureAwait(true);
 
                         _reservedDayParts = reserved ?? Array.Empty<string>();
@@ -777,9 +959,14 @@ namespace CheerfulGiverNXT.ViewModels
 
                     PaymentMethod: "Other",
                     Comments: string.IsNullOrWhiteSpace(Comments) ? null : Comments.Trim(),
-                    CampaignId: string.IsNullOrWhiteSpace(CampaignIdText) ? null : CampaignIdText.Trim(),
-                    AppealId: string.IsNullOrWhiteSpace(AppealIdText) ? null : AppealIdText.Trim(),
-                    PackageId: string.IsNullOrWhiteSpace(PackageIdText) ? null : PackageIdText.Trim(),
+                    // IMPORTANT:
+                    // - CampaignIdText in this app represents the *local* CampaignRecordId (used for
+                    //   sponsorship availability + local gift history scoping), NOT the RE NXT campaign system ID.
+                    // - Sending it to SKY API as campaign_id can cause HTTP 400 (invalid campaign/fund/appeal/package).
+                    // If you later want to assign RE NXT Campaign/Appeal/Package IDs, add separate UI/config fields.
+                    CampaignId: null,
+                    AppealId: null,
+                    PackageId: null,
 
                     VerifyInstallmentsAfterCreate: true,
                     AddInstallmentsIfMissing: true
@@ -799,7 +986,26 @@ namespace CheerfulGiverNXT.ViewModels
 
                 _workflow.Status = WorkflowStatus.ApiSucceeded;
 
-                StatusText = $"Saved pledge! Gift ID: {result.GiftId}";
+                // Apply matching gifts (best-effort). Failures here should not undo the original pledge.
+                try
+                {
+                    StatusText = "Applying matching gifts...";
+                    var match = await _giftMatch.ApplyMatchesForGiftAsync(_workflow).ConfigureAwait(true);
+
+                    if (match.TotalMatched > 0m)
+                        StatusText = $"Saved pledge! Gift ID: {result.GiftId} (Matched {match.TotalMatched:C})";
+                    else
+                        StatusText = $"Saved pledge! Gift ID: {result.GiftId}";
+
+                    if (match.Warnings.Length > 0)
+                        StatusText += $" (Match note: {match.Warnings[0]})";
+                }
+                catch (Exception mex)
+                {
+                    StatusText = $"Saved pledge! Gift ID: {result.GiftId} (Match error: {mex.Message})";
+                    TryAppendErrorLog(mex);
+                }
+
                 RequestClose?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -833,28 +1039,16 @@ namespace CheerfulGiverNXT.ViewModels
                 IsBusy = false;
             }
         }
-
         private static void TryAppendErrorLog(Exception ex)
         {
-            // Keep your existing log file path, but also fall back to LocalAppData if needed.
             try
             {
-                File.AppendAllText(
-                    "D:\\CodeProjects\\CheerfulGiverNXT\\CheerfulErrors.txt",
-                    $"{DateTime.Now}: An error occurred: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}"
-                );
-                return;
+                _ = ErrorLogger.Log(ex, "GiftEntryViewModel");
             }
-            catch { /* ignore */ }
-
-            try
+            catch
             {
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CheerfulGiverNXT");
-                Directory.CreateDirectory(dir);
-                var path = Path.Combine(dir, "CheerfulErrors.txt");
-                File.AppendAllText(path, $"{DateTime.Now}: {ex.Message}{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}");
+                // ignore - logging should never crash the app
             }
-            catch { /* ignore */ }
         }
 
         private void OnPropertyChanged([CallerMemberName] string? name = null) =>
