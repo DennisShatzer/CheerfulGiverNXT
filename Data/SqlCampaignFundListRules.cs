@@ -1,6 +1,5 @@
 using Microsoft.Data.SqlClient;
 using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading;
@@ -9,20 +8,22 @@ using System.Threading.Tasks;
 namespace CheerfulGiverNXT.Data;
 
 /// <summary>
-/// Loads the configured "fund exclusions" used when determining whether a donor is a first-time giver
-/// for the current campaign.
-///
-/// Behavior:
-/// - Reads dbo.CGFirstTimeGiverFundExclusions (preferred) for the active CampaignRecordId, with a fallback to the legacy dbo.CGFirstTimeFundExclusions schema.
-/// - Returns active FundName values as matching tokens (case-insensitive).
-/// - If the table doesn't exist or no campaign is configured, returns an empty list.
+/// Loads the semicolon-separated fund token list from dbo.CGCampaigns.FundList
+/// for the active campaign.
+/// 
+/// Interpretation:
+/// - If any prior contributed fund matches ANY token, the donor is NOT a first-time giver.
+/// - If no matches are found, the donor IS a first-time giver.
+/// 
+/// This class is intentionally schema-tolerant:
+/// - If CGCampaigns or FundList column does not exist, it returns an empty token list.
 /// </summary>
-public interface IFirstTimeGiverRules
+public interface IFundListRules
 {
-    Task<string[]> GetExcludedFundTokensAsync(CancellationToken ct = default);
+    Task<string[]> GetFundTokensAsync(CancellationToken ct = default);
 }
 
-public sealed class SqlFirstTimeGiverRules : IFirstTimeGiverRules
+public sealed class SqlCampaignFundListRules : IFundListRules
 {
     private readonly string _connectionString;
     private readonly ICampaignContext _campaignContext;
@@ -30,22 +31,21 @@ public sealed class SqlFirstTimeGiverRules : IFirstTimeGiverRules
     private string[]? _cachedTokens;
     private int? _cachedCampaignId;
     private DateTime _cachedAtUtc;
-
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(2);
 
-    public SqlFirstTimeGiverRules(string connectionString, ICampaignContext campaignContext)
+    public SqlCampaignFundListRules(string connectionString, ICampaignContext campaignContext)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
         _campaignContext = campaignContext ?? throw new ArgumentNullException(nameof(campaignContext));
     }
 
-    public async Task<string[]> GetExcludedFundTokensAsync(CancellationToken ct = default)
+    public async Task<string[]> GetFundTokensAsync(CancellationToken ct = default)
     {
         var campaignId = await _campaignContext.GetCurrentCampaignRecordIdAsync(ct).ConfigureAwait(false);
         if (!campaignId.HasValue)
             return Array.Empty<string>();
 
-        // Best-effort cache
+        // Cache (best-effort)
         if (_cachedTokens is not null
             && _cachedCampaignId == campaignId.Value
             && (DateTime.UtcNow - _cachedAtUtc) <= CacheTtl)
@@ -56,35 +56,28 @@ public sealed class SqlFirstTimeGiverRules : IFirstTimeGiverRules
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
-        var table = await TableExistsAsync(conn, "CGFirstTimeGiverFundExclusions", ct).ConfigureAwait(false)
-            ? "CGFirstTimeGiverFundExclusions"
-            : "CGFirstTimeFundExclusions";
-
-        if (!await TableExistsAsync(conn, table, ct).ConfigureAwait(false))
+        if (!await TableExistsAsync(conn, "CGCampaigns", ct).ConfigureAwait(false))
             return Array.Empty<string>();
 
-        var sql = $@"
-SELECT FundName
-FROM dbo.[{table}]
-WHERE CampaignRecordId = @CampaignRecordId
-  AND IsActive = 1
-ORDER BY SortOrder, FundName;";
+        // FundList is optional in older DBs.
+        if (!await HasFundListColumnAsync(conn, ct).ConfigureAwait(false))
+            return Array.Empty<string>();
+
+        const string sql = @"
+SELECT FundList
+FROM dbo.CGCampaigns
+WHERE CampaignRecordId = @CampaignRecordId;";
 
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignId.Value });
 
-        var list = new List<string>();
-        await using var rdr = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        while (await rdr.ReadAsync(ct).ConfigureAwait(false))
-        {
-            if (rdr.IsDBNull(0)) continue;
+        var rawObj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        var raw = rawObj is null || rawObj is DBNull ? "" : (Convert.ToString(rawObj) ?? "");
+        raw = raw.Trim();
 
-            var s = rdr.GetString(0);
-            if (!string.IsNullOrWhiteSpace(s))
-                list.Add(s.Trim());
-        }
-
-        var tokens = list
+        var tokens = raw
+            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => (s ?? "").Trim())
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -94,6 +87,14 @@ ORDER BY SortOrder, FundName;";
         _cachedAtUtc = DateTime.UtcNow;
 
         return tokens;
+    }
+
+    private static async Task<bool> HasFundListColumnAsync(SqlConnection conn, CancellationToken ct)
+    {
+        const string sql = "SELECT CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'FundList') IS NOT NULL THEN 1 ELSE 0 END;";
+        await using var cmd = new SqlCommand(sql, conn);
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return obj is not null && obj is not DBNull && Convert.ToInt32(obj) == 1;
     }
 
     private static async Task<bool> TableExistsAsync(SqlConnection conn, string tableName, CancellationToken ct)
@@ -106,7 +107,6 @@ WHERE s.name = 'dbo' AND t.name = @Table;";
 
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.Add(new SqlParameter("@Table", SqlDbType.NVarChar, 128) { Value = tableName });
-
         var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return obj is not null;
     }

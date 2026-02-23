@@ -89,6 +89,7 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
             TimeZoneId = tz!,
             GoalAmount = null,
             GoalFirstTimeGivers = null,
+            FundList = "",
             IsActive = false,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -119,6 +120,8 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
             {
                 r.CampaignName = (r.CampaignName ?? "").Trim();
                 r.TimeZoneId = (r.TimeZoneId ?? "").Trim();
+                r.FundList = (r.FundList ?? "").Trim();
+                NormalizeSponsorshipThresholds(r);
                 return r;
             })
             .Where(r => !string.IsNullOrWhiteSpace(r.CampaignName))
@@ -138,6 +141,19 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
         {
             IsBusy = false;
         }
+    }
+
+
+
+    private static void NormalizeSponsorshipThresholds(CampaignRow r)
+    {
+        const decimal DefaultHalf = 1000m;
+        const decimal DefaultFull = 2000m;
+
+        if (r.SponsorshipHalfDayAmount <= 0m) r.SponsorshipHalfDayAmount = DefaultHalf;
+        if (r.SponsorshipFullDayAmount <= 0m) r.SponsorshipFullDayAmount = DefaultFull;
+        if (r.SponsorshipFullDayAmount < r.SponsorshipHalfDayAmount)
+            r.SponsorshipFullDayAmount = Math.Max(r.SponsorshipHalfDayAmount, DefaultFull);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

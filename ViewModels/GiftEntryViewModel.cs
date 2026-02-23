@@ -47,18 +47,28 @@ namespace CheerfulGiverNXT.ViewModels
             new("Annually",  PledgeFrequency.Annually,  1,  false, false),
         };
 
-        private static readonly SponsorshipOption[] HalfDaySponsorshipOptions =
+
+        private const decimal DefaultHalfDayThresholdAmount = 1000m;
+        private const decimal DefaultFullDayThresholdAmount = 2000m;
+
+        // These are loaded per campaign from dbo.CGCampaigns (with safe defaults if the columns don't exist).
+        private decimal _halfDayThresholdAmount = DefaultHalfDayThresholdAmount;
+        private decimal _fullDayThresholdAmount = DefaultFullDayThresholdAmount;
+
+        // Cache sponsorship option arrays so selection + stored ThresholdAmount stay consistent with the campaign.
+        private SponsorshipOption[] _halfDaySponsorshipOptions =
         {
-            new("Half-day AM", 1000m),
-            new("Half-day PM", 1000m),
+            new("Half-day AM", DefaultHalfDayThresholdAmount),
+            new("Half-day PM", DefaultHalfDayThresholdAmount),
         };
 
-        private static readonly SponsorshipOption[] FullDaySponsorshipOptions =
+        private SponsorshipOption[] _fullDaySponsorshipOptions =
         {
-            new("Full day", 2000m),
-            new("Half-day AM", 1000m),
-            new("Half-day PM", 1000m),
+            new("Full day", DefaultFullDayThresholdAmount),
+            new("Half-day AM", DefaultHalfDayThresholdAmount),
+            new("Half-day PM", DefaultHalfDayThresholdAmount),
         };
+
 
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
         private readonly RenxtGiftServer _gifts;
@@ -307,6 +317,112 @@ namespace CheerfulGiverNXT.ViewModels
 
         private string _campaignNameForHeader = "";
         private int _campaignNameLoadVersion;
+
+
+        private int _sponsorshipThresholdLoadVersion;
+
+        private static void NormalizeThresholds(ref decimal half, ref decimal full)
+        {
+            if (half <= 0m) half = DefaultHalfDayThresholdAmount;
+            if (full <= 0m) full = DefaultFullDayThresholdAmount;
+            if (full < half) full = Math.Max(half, DefaultFullDayThresholdAmount);
+        }
+
+        private void UpdateSponsorshipOptionsCache()
+        {
+            var half = _halfDayThresholdAmount;
+            var full = _fullDayThresholdAmount;
+
+            _halfDaySponsorshipOptions = new[]
+            {
+                new SponsorshipOption("Half-day AM", half),
+                new SponsorshipOption("Half-day PM", half)
+            };
+
+            _fullDaySponsorshipOptions = new[]
+            {
+                new SponsorshipOption("Full day", full),
+                new SponsorshipOption("Half-day AM", half),
+                new SponsorshipOption("Half-day PM", half)
+            };
+        }
+
+        private void ResetSponsorshipThresholdsToDefaults()
+        {
+            _halfDayThresholdAmount = DefaultHalfDayThresholdAmount;
+            _fullDayThresholdAmount = DefaultFullDayThresholdAmount;
+            UpdateSponsorshipOptionsCache();
+            RefreshSponsorshipEligibility();
+        }
+
+        private async Task LoadSponsorshipThresholdsAsync(int campaignRecordId)
+        {
+            var version = Interlocked.Increment(ref _sponsorshipThresholdLoadVersion);
+
+            var half = DefaultHalfDayThresholdAmount;
+            var full = DefaultFullDayThresholdAmount;
+
+            try
+            {
+                var cs = ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString;
+                if (!string.IsNullOrWhiteSpace(cs))
+                {
+                    await using var conn = new SqlConnection(cs);
+                    await conn.OpenAsync().ConfigureAwait(true);
+
+                    const string colSql = @"
+SELECT
+    CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'SponsorshipHalfDayAmount') IS NOT NULL THEN 1 ELSE 0 END AS HasHalf,
+    CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'SponsorshipFullDayAmount') IS NOT NULL THEN 1 ELSE 0 END AS HasFull;";
+
+                    bool hasCols = false;
+                    await using (var cmdCols = new SqlCommand(colSql, conn))
+                    await using (var rdrCols = await cmdCols.ExecuteReaderAsync().ConfigureAwait(true))
+                    {
+                        if (await rdrCols.ReadAsync().ConfigureAwait(true))
+                        {
+                            var hasHalf = !rdrCols.IsDBNull(0) && rdrCols.GetInt32(0) == 1;
+                            var hasFull = !rdrCols.IsDBNull(1) && rdrCols.GetInt32(1) == 1;
+                            hasCols = hasHalf && hasFull;
+                        }
+                    }
+
+                    if (hasCols)
+                    {
+                        const string sql = @"
+SELECT TOP (1)
+    SponsorshipHalfDayAmount,
+    SponsorshipFullDayAmount
+FROM dbo.CGCampaigns
+WHERE CampaignRecordId = @Id;";
+
+                        await using var cmd = new SqlCommand(sql, conn);
+                        cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = campaignRecordId });
+
+                        await using var rdr = await cmd.ExecuteReaderAsync().ConfigureAwait(true);
+                        if (await rdr.ReadAsync().ConfigureAwait(true))
+                        {
+                            if (!rdr.IsDBNull(0)) half = rdr.GetDecimal(0);
+                            if (!rdr.IsDBNull(1)) full = rdr.GetDecimal(1);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Best-effort: keep defaults.
+            }
+
+            NormalizeThresholds(ref half, ref full);
+
+            if (version != _sponsorshipThresholdLoadVersion) return;
+
+            _halfDayThresholdAmount = half;
+            _fullDayThresholdAmount = full;
+            UpdateSponsorshipOptionsCache();
+
+            RefreshSponsorshipEligibility();
+        }
 
         private async Task LoadCampaignNameAsync(int campaignRecordId)
         {
@@ -576,9 +692,15 @@ WHERE CampaignRecordId = @Id;";
                 _campaignIdText = value;
 
                 if (int.TryParse((_campaignIdText ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cid) && cid > 0)
+                {
                     _ = LoadCampaignNameAsync(cid);
+                    _ = LoadSponsorshipThresholdsAsync(cid);
+                }
                 else
+                {
                     _campaignNameForHeader = "";
+                    ResetSponsorshipThresholdsToDefaults();
+                }
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ExistingCampaignGiftsHeader));
                 _ = ReloadExistingCampaignGiftsAsync();
@@ -788,8 +910,8 @@ WHERE CampaignRecordId = @Id;";
             if (!TryParseAmount(out var amt) || amt <= 0m)
                 return Array.Empty<SponsorshipOption>();
 
-            if (amt >= 2000m) return FullDaySponsorshipOptions;
-            if (amt >= 1000m) return HalfDaySponsorshipOptions;
+            if (amt >= _fullDayThresholdAmount) return _fullDaySponsorshipOptions;
+            if (amt >= _halfDayThresholdAmount) return _halfDaySponsorshipOptions;
             return Array.Empty<SponsorshipOption>();
         }
 

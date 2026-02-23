@@ -155,11 +155,16 @@ ORDER BY CampaignRecordId DESC;";
     private static async Task<int?> TryInferFromRelatedTablesAsync(SqlConnection conn, CancellationToken ct)
     {
         // If exclusions exist, infer the most recently created/used campaign id.
-        if (await TableExistsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false))
+        // Preferred table name after the radio-funds refactor:
+        //   dbo.CGFirstTimeGiverFundExclusions
+        // Legacy table name (older installs):
+        //   dbo.CGFirstTimeFundExclusions
+
+        if (await TableExistsAsync(conn, "CGFirstTimeGiverFundExclusions", ct).ConfigureAwait(false))
         {
             const string sql = @"
 SELECT TOP (1) CampaignRecordId
-FROM dbo.CGFirstTimeFundExclusions
+FROM dbo.CGFirstTimeGiverFundExclusions
 WHERE IsActive = 1
 ORDER BY CreatedAt DESC, CampaignRecordId DESC;";
 
@@ -169,6 +174,27 @@ ORDER BY CreatedAt DESC, CampaignRecordId DESC;";
             {
                 if (int.TryParse(Convert.ToString(obj), out var id) && id > 0)
                     return id;
+            }
+        }
+        else if (await TableExistsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false))
+        {
+            // Only attempt if the legacy schema is present (CampaignRecordId column).
+            var cols = await GetColumnsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false);
+            if (cols.Contains("CampaignRecordId", StringComparer.OrdinalIgnoreCase))
+            {
+                const string sql = @"
+SELECT TOP (1) CampaignRecordId
+FROM dbo.CGFirstTimeFundExclusions
+WHERE IsActive = 1
+ORDER BY CreatedAt DESC, CampaignRecordId DESC;";
+
+                await using var cmd = new SqlCommand(sql, conn);
+                var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+                if (obj is not null && obj is not DBNull)
+                {
+                    if (int.TryParse(Convert.ToString(obj), out var id) && id > 0)
+                        return id;
+                }
             }
         }
 

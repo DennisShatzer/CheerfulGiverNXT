@@ -2,7 +2,6 @@ using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.ViewModels;
 using CheerfulGiverNXT.Workflow;
 using System;
-using System.Configuration;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -74,7 +73,8 @@ namespace CheerfulGiverNXT
             else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
                      && (e.Key == Key.F || e.SystemKey == Key.F))
             {
-                dialog = new FirstTimeFundExclusionsWindow();
+                // Fund tokens are now configured per-campaign in Campaigns Admin (FundList).
+                dialog = new CampaignsAdminWindow();
             }
             else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
                      && (e.Key == Key.D || e.SystemKey == Key.D))
@@ -164,41 +164,36 @@ namespace CheerfulGiverNXT
 
             Mouse.OverrideCursor = null;
             Cursor = Cursors.Arrow;
-
             try
             {
-                // Query the donor's contributed funds from RE NXT (via SKY API) once,
-                // then evaluate both:
-                //  - New Radio Constituent (based on RadioFunds tokens)
-                //  - First Time Giver (based on SQL fund exclusions for the active campaign)
+                // Determine:
+                //  - New Radio Giver: new constituent OR existing constituent with no prior gifts to configured campaign FundList
+                //  - First Time Giver: if any prior contributed fund matches ANY token in campaign FundList, they are NOT a first-time giver
+
+                if (_workflow.IsNewConstituent)
+                {
+                    // If the operator just CREATED this constituent (not found in search), they are new by definition.
+                    _isNewRadioConstituent = true;
+                    _isFirstTimeGiver = true;
+                    return;
+                }
+
+                // Existing constituent: query contributed funds once and evaluate both rules.
                 var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 1000);
 
-                // 1) New Radio Constituent
-                var radioTokens = LoadRadioFundTokens();
-                if (radioTokens.Length == 0)
+                // Single source of truth: per-campaign semicolon-separated tokens in dbo.CGCampaigns.FundList.
+                var tokens = await App.FundListRules.GetFundTokensAsync();
+                if (tokens.Length == 0)
                 {
+                    // If not configured, default to false (safer than incorrectly flagging a donor).
                     _isNewRadioConstituent = false;
-                }
-                else
-                {
-                    var hasRadioFundGift = funds.Any(f => radioTokens.Any(t => TokenMatches(t, f.Name)));
-                    _isNewRadioConstituent = !hasRadioFundGift;
-                }
-
-                // 2) First Time Giver (respects dbo.CGFirstTimeFundExclusions for the active campaign)
-                var excludedTokens = await App.FirstTimeGiverRules.GetExcludedFundTokensAsync();
-                if (funds.Count == 0)
-                {
-                    _isFirstTimeGiver = true;
-                }
-                else if (excludedTokens.Length == 0)
-                {
                     _isFirstTimeGiver = false;
                 }
                 else
                 {
-                    var hasCountedGift = funds.Any(f => !excludedTokens.Any(t => TokenMatches(t, f.Name)));
-                    _isFirstTimeGiver = !hasCountedGift;
+                    var hasAnyMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
+                    _isFirstTimeGiver = !hasAnyMatch;
+                    _isNewRadioConstituent = !hasAnyMatch;
                 }
             }
             catch
@@ -225,19 +220,6 @@ namespace CheerfulGiverNXT
 
             if (FirstTimeGiverBanner is not null)
                 FirstTimeGiverBanner.Visibility = _isFirstTimeGiver ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private static string[] LoadRadioFundTokens()
-        {
-            var raw = (ConfigurationManager.AppSettings["RadioFunds"] ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
-
-            return raw
-                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => (t ?? "").Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
         }
 
         private static bool TokenMatches(string token, string? fundName)

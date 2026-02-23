@@ -31,12 +31,16 @@ public sealed class SqlFirstTimeFundExclusionsRepository
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
-        if (!await TableExistsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false))
+        var table = await TableExistsAsync(conn, "CGFirstTimeGiverFundExclusions", ct).ConfigureAwait(false)
+            ? "CGFirstTimeGiverFundExclusions"
+            : "CGFirstTimeFundExclusions";
+
+        if (!await TableExistsAsync(conn, table, ct).ConfigureAwait(false))
             return Array.Empty<FirstTimeFundExclusionRow>();
 
-        const string sql = @"
+        var sql = $@"
 SELECT FundName, IsActive, SortOrder, CreatedAt
-FROM dbo.CGFirstTimeFundExclusions
+FROM dbo.[{table}]
 WHERE CampaignRecordId = @CampaignRecordId
 ORDER BY SortOrder, FundName;";
 
@@ -76,8 +80,12 @@ ORDER BY SortOrder, FundName;";
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
-        if (!await TableExistsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false))
-            throw new InvalidOperationException("Table dbo.CGFirstTimeFundExclusions was not found in the database.");
+        var table = await TableExistsAsync(conn, "CGFirstTimeGiverFundExclusions", ct).ConfigureAwait(false)
+            ? "CGFirstTimeGiverFundExclusions"
+            : "CGFirstTimeFundExclusions";
+
+        if (!await TableExistsAsync(conn, table, ct).ConfigureAwait(false))
+            throw new InvalidOperationException($"Table dbo.{table} was not found in the database.");
 
         await using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
 
@@ -85,15 +93,15 @@ ORDER BY SortOrder, FundName;";
         {
             // Remove existing rows for this campaign.
             {
-                const string del = "DELETE FROM dbo.CGFirstTimeFundExclusions WHERE CampaignRecordId = @CampaignRecordId;";
+                var del = $"DELETE FROM dbo.[{table}] WHERE CampaignRecordId = @CampaignRecordId;";
                 await using var cmd = new SqlCommand(del, conn, tx);
                 cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignRecordId });
                 await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
             // Insert new rows (ignore blank fund names).
-            const string ins = @"
-INSERT INTO dbo.CGFirstTimeFundExclusions
+            var ins = $@"
+INSERT INTO dbo.[{table}]
     (CampaignRecordId, FundName, IsActive, SortOrder, CreatedAt)
 VALUES
     (@CampaignRecordId, @FundName, @IsActive, @SortOrder, SYSUTCDATETIME());";
