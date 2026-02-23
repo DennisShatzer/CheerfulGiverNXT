@@ -170,7 +170,7 @@
             <!-- Constituent header + banner -->
             <Border BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" Padding="10" CornerRadius="6">
                 <StackPanel>
-                    <!-- Visible only when NewConstituent == true (set by code-behind) -->
+                    <!-- Visible only when NewConstituent == true (set by code=behind) -->
                     <Border x:Name="NewConstituentBanner"
                             Background="{DynamicResource CG.Brush.Banner.SuccessBackground}"
                             BorderBrush="{DynamicResource CG.Brush.Banner.SuccessBorder}"
@@ -185,7 +185,7 @@
                     </Border>
 
                     
-                    <!-- Visible only when IsFirstTimeGiver == true (set by code-behind) -->
+                    <!-- Visible only when IsFirstTimeGiver == true (set by code=behind) -->
                     <Border x:Name="FirstTimeGiverBanner"
                             Background="{DynamicResource CG.Brush.Banner.InfoBackground}"
                             BorderBrush="{DynamicResource CG.Brush.Banner.InfoBorder}"

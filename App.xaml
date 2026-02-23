@@ -4,7 +4,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Default theme for designer + first-paint fallback. ThemeManager swaps this at runtime. -->
+                <!-- Default theme for designer + first=paint fallback. ThemeManager swaps this at runtime. -->
                 <ResourceDictionary Source="Themes/Light.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
@@ -14,23 +14,23 @@
 
         <!--
             Global DataGrid column header theming
-            =====================================
+            ====================================
             Problem:
-              - WPF DataGrid column headers use SystemColors by default.
-              - SystemColors do NOT automatically switch for Light/Dark unless you are in High Contrast
+              = WPF DataGrid column headers use SystemColors by default.
+              = SystemColors do NOT automatically switch for Light/Dark unless you are in High Contrast
                 or using a theming framework.
-              - Result: headers look "stuck" in Light Mode when the rest of the UI is themed.
+              = Result: headers look "stuck" in Light Mode when the rest of the UI is themed.
 
             Solution:
-              - Provide a default Style for DataGridColumnHeader that uses our theme brushes.
-              - Uses DynamicResource so it switches live when ThemeManager swaps Light/Dark.
+              = Provide a default Style for DataGridColumnHeader that uses our theme brushes.
+              = Uses DynamicResource so it switches live when ThemeManager swaps Light/Dark.
 
             Brush keys (tune in Themes/Light.xaml + Themes/Dark.xaml):
-              - CG.Brush.GridHeaderBackground
-              - CG.Brush.GridHeaderForeground
-              - CG.Brush.GridHeaderHoverBackground
-              - CG.Brush.GridHeaderPressedBackground
-              - CG.Brush.GridHeaderBorder
+              = CG.Brush.GridHeaderBackground
+              = CG.Brush.GridHeaderForeground
+              = CG.Brush.GridHeaderHoverBackground
+              = CG.Brush.GridHeaderPressedBackground
+              = CG.Brush.GridHeaderBorder
         -->
         <Style TargetType="{x:Type DataGridColumnHeader}">
             <Setter Property="Padding" Value="10,0,10,0"/>
@@ -41,7 +41,21 @@
             <Setter Property="Background" Value="{DynamicResource CG.Brush.GridHeaderBackground}"/>
             <Setter Property="Foreground" Value="{DynamicResource CG.Brush.GridHeaderForeground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.GridHeaderBorder}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <!--
+                BorderThickness
+                = Bottom line separates header from rows
+                = Right line separates columns (subtle, professional)
+                If you prefer NO vertical separators, change to: 0,0,0,1
+            -->
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+
+            <!--
+                Header separator
+                = DataGridColumnHeader has a built=in separator feature that can render "3D" lines.
+                = We collapse it so we fully control the look via BorderThickness + GridHeaderBorder.
+            -->
+            <Setter Property="SeparatorVisibility" Value="Collapsed"/>
+            <Setter Property="SeparatorBrush" Value="{DynamicResource CG.Brush.GridHeaderBorder}"/>
 
             <Setter Property="Template">
                 <Setter.Value>
@@ -69,21 +83,44 @@
                                       Margin="0,0,8,0"
                                       VerticalAlignment="Center"
                                       HorizontalAlignment="Right"
-                                      Fill="{DynamicResource CG.Brush.GridHeaderForeground}"
+                                      Fill="{DynamicResource CG.Brush.GridSortArrow}"
                                       Data="M 0 6 L 4 0 L 8 6 Z"
                                       Visibility="Collapsed"/>
 
-                                <!-- Required by DataGrid for column resizing -->
+                                <!--
+                                    Column resize grippers
+                                    =====================
+                                    The strange "pipes" you saw are usually caused by the default Thumb style
+                                    drawing a border even when Background is Transparent.
+
+                                    Fix:
+                                      = Provide an explicit Thumb template that draws NOTHING (transparent border)
+                                      = Keep the hit area so resizing still works
+
+                                    If you ever want a subtle resize hint on hover, we can add a 1px line here
+                                    that only appears when the Thumb is mouse over.
+                                -->
                                 <Thumb x:Name="PART_LeftHeaderGripper"
                                        HorizontalAlignment="Left"
                                        Width="6"
-                                       Background="Transparent"
-                                       Cursor="SizeWE"/>
+                                       Cursor="SizeWE">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="{x:Type Thumb}">
+                                            <Border Background="Transparent" BorderBrush="Transparent" BorderThickness="0"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+
                                 <Thumb x:Name="PART_RightHeaderGripper"
                                        HorizontalAlignment="Right"
                                        Width="6"
-                                       Background="Transparent"
-                                       Cursor="SizeWE"/>
+                                       Cursor="SizeWE">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="{x:Type Thumb}">
+                                            <Border Background="Transparent" BorderBrush="Transparent" BorderThickness="0"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
                             </Grid>
                         </Border>
 
@@ -118,6 +155,110 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        </ResourceDictionary>
+        
+        <!--
+            Global DataGrid selection / focus styling
+            =======================================
+            Goal:
+              = Make selection colors, current=cell focus, and grid focus border follow our theme.
+              = Keep this UI=only: no impact to commands, bindings, or data.
+
+            Keys (tune in Themes/Light.xaml + Themes/Dark.xaml):
+              = CG.Brush.GridSelectionBackground / Foreground
+              = CG.Brush.GridSelectionInactiveBackground / Foreground
+              = CG.Brush.GridRowHoverBackground
+              = CG.Brush.GridCellHoverBackground
+              = CG.Brush.GridFocusBorder
+              = CG.Brush.GridCurrentCellBorder
+
+            Notes:
+              = We use DynamicResource so switching themes updates live.
+              = These are *implicit* styles (no x:Key) so they apply to all DataGrids by default.
+              = Windows that define custom CellStyle/RowStyle can still opt out by overriding.
+        -->
+
+        <!-- DataGrid: show an accent border when the grid has keyboard focus -->
+        <Style TargetType="{x:Type DataGrid}">
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.GridFocusBorder}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Rows: selection + hover -->
+        <Style TargetType="{x:Type DataGridRow}">
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+
+            <Style.Triggers>
+                <!-- Hover (only visible when not selected) -->
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsMouseOver" Value="True"/>
+                        <Condition Property="IsSelected" Value="False"/>
+                    </MultiTrigger.Conditions>
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridRowHoverBackground}"/>
+                </MultiTrigger>
+
+                <!-- Inactive selection (grid not focused) -->
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsSelected" Value="True"/>
+                        <Condition Property="Selector.IsSelectionActive" Value="False"/>
+                    </MultiTrigger.Conditions>
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridSelectionInactiveBackground}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource CG.Brush.GridSelectionInactiveForeground}"/>
+                </MultiTrigger>
+
+                <!-- Active selection -->
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridSelectionBackground}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource CG.Brush.GridSelectionForeground}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Cells: selection background + "current cell" focus ring -->
+        <Style TargetType="{x:Type DataGridCell}">
+            <!-- Remove the default dotted focus rectangle; we provide our own border -->
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+
+            <Style.Triggers>
+                <!-- Hover (only visible when not selected) -->
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsMouseOver" Value="True"/>
+                        <Condition Property="IsSelected" Value="False"/>
+                    </MultiTrigger.Conditions>
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridCellHoverBackground}"/>
+                </MultiTrigger>
+
+                <!-- Inactive selection (grid not focused) -->
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsSelected" Value="True"/>
+                        <Condition Property="Selector.IsSelectionActive" Value="False"/>
+                    </MultiTrigger.Conditions>
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridSelectionInactiveBackground}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource CG.Brush.GridSelectionInactiveForeground}"/>
+                </MultiTrigger>
+
+                <!-- Active selection -->
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CG.Brush.GridSelectionBackground}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource CG.Brush.GridSelectionForeground}"/>
+                </Trigger>
+
+                <!-- Current cell (keyboard focus within) -->
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.GridCurrentCellBorder}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+</ResourceDictionary>
     </Application.Resources>
 </Application>

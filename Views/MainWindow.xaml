@@ -17,42 +17,42 @@
             THEME / DynamicResource QUICK GUIDE (MainWindow)
             ==================================================================
 
-            This window intentionally DOES NOT hard-code colors. Instead it uses
+            This window intentionally DOES NOT hard=code colors. Instead it uses
             DynamicResource keys defined in:
-              - Themes/Light.xaml
-              - Themes/Dark.xaml
+              = Themes/Light.xaml
+              = Themes/Dark.xaml
 
             Why DynamicResource?
-              - When ThemeManager swaps the theme dictionary at runtime, the UI
+              = When ThemeManager swaps the theme dictionary at runtime, the UI
                 updates immediately without recreating windows or touching any
                 workflow logic.
 
-            Key-to-UI mapping you will most commonly tune:
+            Key=to=UI mapping you will most commonly tune:
 
               CG.Brush.WindowBackground
-                - Window.Background (the overall app backdrop)
+                = Window.Background (the overall app backdrop)
 
               CG.Brush.Surface / CG.Brush.SurfaceAlt
-                - "Card" surfaces and secondary button fills
-                - DataGrid Background and RowBackground
+                = "Card" surfaces and secondary button fills
+                = DataGrid Background and RowBackground
 
               CG.Brush.TextPrimary / CG.Brush.TextMuted
-                - Normal text vs. helper/status text
+                = Normal text vs. helper/status text
 
               CG.Brush.Border / CG.Brush.BorderStrong
-                - Card borders, DataGrid border, secondary button borders
+                = Card borders, DataGrid border, secondary button borders
 
               CG.Brush.InputBackground / CG.Brush.InputBorder
-                - Search TextBox background and border
+                = Search TextBox background and border
 
               CG.Brush.Accent / CG.Brush.AccentForeground
-                - Primary buttons, progress bar fill, theme toggle "ON" state
+                = Primary buttons, progress bar fill, theme toggle "ON" state
 
               CG.Brush.GridLines / CG.Brush.GridAltRow
-                - DataGrid line + alternating row color
+                = DataGrid line + alternating row color
 
               CG.Brush.ProgressTrack
-                - Status bar progress bar background
+                = Status bar progress bar background
         -->
 
         <!-- ===== Basic sizing (define BEFORE any StaticResource references) ===== -->
@@ -84,9 +84,9 @@
 
             <!--
                 INPUT BRUSHES
-                - CG.Brush.InputBackground : TextBox fill
-                - CG.Brush.TextPrimary     : typed text
-                - CG.Brush.InputBorder     : border / focus ring baseline
+                = CG.Brush.InputBackground : TextBox fill
+                = CG.Brush.TextPrimary     : typed text
+                = CG.Brush.InputBorder     : border / focus ring baseline
                 Tune in Themes/Light.xaml and Themes/Dark.xaml.
             -->
             <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
@@ -128,8 +128,8 @@
 
             <!--
                 PRIMARY BUTTON BRUSHES
-                - CG.Brush.Accent           : background + border
-                - CG.Brush.AccentForeground : text
+                = CG.Brush.Accent           : background + border
+                = CG.Brush.AccentForeground : text
             -->
             <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
@@ -146,9 +146,9 @@
 
             <!--
                 SECONDARY BUTTON BRUSHES
-                - CG.Brush.SurfaceAlt   : background
-                - CG.Brush.BorderStrong : border
-                - CG.Brush.TextPrimary  : text
+                = CG.Brush.SurfaceAlt   : background
+                = CG.Brush.BorderStrong : border
+                = CG.Brush.TextPrimary  : text
             -->
             <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
@@ -160,11 +160,11 @@
         <!-- ===== DataGrid (fix "top heavy" cell text) ===== -->
         <Style x:Key="GridCellText" TargetType="{x:Type TextBlock}">
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <!-- baseline nudge down 1px to avoid "top-heavy" look -->
+            <!-- baseline nudge down 1px to avoid "top=heavy" look -->
             <Setter Property="Margin" Value="0,1,0,0"/>
         </Style>
 
-        <Style x:Key="ResultsGrid" TargetType="{x:Type DataGrid}">
+        <Style x:Key="ResultsGrid" TargetType="{x:Type DataGrid}" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
             <Setter Property="RowHeight" Value="34"/>
             <Setter Property="ColumnHeaderHeight" Value="36"/>
@@ -173,11 +173,11 @@
 
             <!--
                 DATAGRID BRUSHES
-                - CG.Brush.GridLines  : horizontal separators
-                - CG.Brush.GridAltRow : alternating row fill
-                - CG.Brush.Border     : outer border
-                - CG.Brush.Surface    : base background (rows + grid)
-                - CG.Brush.TextPrimary: cell text default
+                = CG.Brush.GridLines  : horizontal separators
+                = CG.Brush.GridAltRow : alternating row fill
+                = CG.Brush.Border     : outer border
+                = CG.Brush.Surface    : base background (rows + grid)
+                = CG.Brush.TextPrimary: cell text default
             -->
             <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource CG.Brush.GridLines}"/>
             <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
@@ -189,28 +189,28 @@
             <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
         </Style>
 
-        <Style x:Key="ResultsCell" TargetType="{x:Type DataGridCell}">
+        <Style x:Key="ResultsCell" TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource {x:Type DataGridCell}}">
             <Setter Property="Padding" Value="10,2,10,0"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
                         <!--
             ResultsHeader (DataGrid column header styling)
-            ==============================================
+            =============================================
             This grid uses a slightly roomier header padding and header height.
 
             IMPORTANT:
-              - The ACTUAL theming (Background/Foreground/SortArrow/Grippers/etc.) is applied
+              = The ACTUAL theming (Background/Foreground/SortArrow/Grippers/etc.) is applied
                 globally in App.xaml via the default Style for DataGridColumnHeader.
-              - That global style uses the DynamicResource keys below, so the header switches
+              = That global style uses the DynamicResource keys below, so the header switches
                 live when you toggle Light/Dark.
 
             DynamicResource brush mapping (tune these in Themes/Light.xaml + Themes/Dark.xaml):
-              - CG.Brush.GridHeaderBackground        : normal header background
-              - CG.Brush.GridHeaderForeground        : header text + sort arrow
-              - CG.Brush.GridHeaderHoverBackground   : mouse-over background
-              - CG.Brush.GridHeaderPressedBackground : pressed background
-              - CG.Brush.GridHeaderBorder            : bottom border separating header from rows
+              = CG.Brush.GridHeaderBackground        : normal header background
+              = CG.Brush.GridHeaderForeground        : header text + sort arrow
+              = CG.Brush.GridHeaderHoverBackground   : mouse=over background
+              = CG.Brush.GridHeaderPressedBackground : pressed background
+              = CG.Brush.GridHeaderBorder            : bottom border separating header from rows
         -->
         <Style x:Key="ResultsHeader"
                TargetType="{x:Type DataGridColumnHeader}"
@@ -230,19 +230,19 @@
         </Style>
 
         <!--
-            Theme toggle (non-intrusive)
+            Theme toggle (non=intrusive)
             ============================
             This is a small "switch" shown in the MainWindow StatusBar.
 
             Brush usage:
               OFF state:
-                - Track background: CG.Brush.SurfaceAlt
-                - Track border:     CG.Brush.BorderStrong
+                = Track background: CG.Brush.SurfaceAlt
+                = Track border:     CG.Brush.BorderStrong
               ON state:
-                - Track background: CG.Brush.Accent
-                - Track border:     CG.Brush.Accent
+                = Track background: CG.Brush.Accent
+                = Track border:     CG.Brush.Accent
               Thumb:
-                - CG.Brush.AccentForeground (kept high-contrast in both themes)
+                = CG.Brush.AccentForeground (kept high=contrast in both themes)
         -->
         <Style x:Key="ThemeToggle.Switch" TargetType="{x:Type ToggleButton}">
             <Setter Property="Width" Value="44"/>
@@ -335,7 +335,7 @@
                     Visibility="{Binding IsNotAuthorized, Converter={StaticResource BoolToVis}}"/> -->
         </DockPanel>
 
-        <!-- Auth debug (read-only) -->
+        <!-- Auth debug (read=only) -->
         <Expander Grid.Row="1"
                   Header="Authorization (read-only)"
                   IsExpanded="False"
@@ -434,9 +434,9 @@
 
             <!--
                 Theme toggle (Light/Dark)
-                - This is intentionally small and kept in the StatusBar so it
+                = This is intentionally small and kept in the StatusBar so it
                   doesn't clutter the main workflow UI.
-                - The label text is updated in MainWindow.xaml.cs so it always
+                = The label text is updated in MainWindow.xaml.cs so it always
                   reflects the current theme mode.
             -->
             <StatusBarItem HorizontalAlignment="Right" DockPanel.Dock="Right">

@@ -15,34 +15,34 @@
         QUICK MAP (same as Light.xaml)
         ==============================
         Window background / chrome:
-          - CG.Brush.WindowBackground
+          = CG.Brush.WindowBackground
 
         Cards/panels + DataGrid base:
-          - CG.Brush.Surface
-          - CG.Brush.SurfaceAlt
+          = CG.Brush.Surface
+          = CG.Brush.SurfaceAlt
 
         Text:
-          - CG.Brush.TextPrimary
-          - CG.Brush.TextMuted
+          = CG.Brush.TextPrimary
+          = CG.Brush.TextMuted
 
         Borders:
-          - CG.Brush.Border
-          - CG.Brush.BorderStrong
+          = CG.Brush.Border
+          = CG.Brush.BorderStrong
 
         Inputs:
-          - CG.Brush.InputBackground
-          - CG.Brush.InputBorder
+          = CG.Brush.InputBackground
+          = CG.Brush.InputBorder
 
         Accent:
-          - CG.Brush.Accent
-          - CG.Brush.AccentForeground
+          = CG.Brush.Accent
+          = CG.Brush.AccentForeground
 
         DataGrid details:
-          - CG.Brush.GridLines
-          - CG.Brush.GridAltRow
+          = CG.Brush.GridLines
+          = CG.Brush.GridAltRow
 
         Status progress bar:
-          - CG.Brush.ProgressTrack
+          = CG.Brush.ProgressTrack
     -->
 
     <!-- ===== Core surfaces ===== -->
@@ -76,11 +76,11 @@
         High Contrast or a framework that themes system colors. We explicitly theme them.
 
         Keys used by MainWindow Results grid (and safe to reuse for other DataGrids):
-          - CG.Brush.GridHeaderBackground         : header bar background
-          - CG.Brush.GridHeaderForeground         : header text + sort arrow
-          - CG.Brush.GridHeaderHoverBackground    : hover state background
-          - CG.Brush.GridHeaderPressedBackground  : pressed state background
-          - CG.Brush.GridHeaderBorder             : bottom border (separates headers from rows)
+          = CG.Brush.GridHeaderBackground         : header bar background
+          = CG.Brush.GridHeaderForeground         : header text + sort arrow
+          = CG.Brush.GridHeaderHoverBackground    : hover state background
+          = CG.Brush.GridHeaderPressedBackground  : pressed state background
+          = CG.Brush.GridHeaderBorder             : bottom border (separates headers from rows)
     -->
     <SolidColorBrush x:Key="CG.Brush.GridHeaderBackground"        Color="#FF2A2A2D"/>
     <SolidColorBrush x:Key="CG.Brush.GridHeaderForeground"        Color="#FFF3F3F3"/>
@@ -110,5 +110,45 @@
     <SolidColorBrush x:Key="CG.Brush.Callout.MatchBorder"      Color="#FF1D4ED8"/>
     <SolidColorBrush x:Key="CG.Brush.Callout.MatchTitle"       Color="#FF93C5FD"/>
     <SolidColorBrush x:Key="CG.Brush.Callout.MatchDetail"      Color="#FFBFDBFE"/>
+
+
+    <!--
+        =============================================================
+        DataGrid selection / focus / sort arrow theming
+        =============================================================
+        These resources are used by the global styles in App.xaml:
+
+        Selection:
+          = CG.Brush.GridSelectionBackground        : active selection (row/cell)
+          = CG.Brush.GridSelectionForeground        : text on active selection
+          = CG.Brush.GridSelectionInactiveBackground: selection when grid/window is NOT focused
+          = CG.Brush.GridSelectionInactiveForeground: text on inactive selection
+
+        Hover:
+          = CG.Brush.GridRowHoverBackground         : row hover (non=selected)
+          = CG.Brush.GridCellHoverBackground        : cell hover (non=selected)
+
+        Focus:
+          = CG.Brush.GridFocusBorder                : border around the DataGrid when focused
+          = CG.Brush.GridCurrentCellBorder          : border around the current (keyboard) cell
+
+        Sort:
+          = CG.Brush.GridSortArrow                  : sort arrow fill (separate from header text if desired)
+    -->
+
+    <!-- Dark mode defaults (tune freely) -->
+    <SolidColorBrush x:Key="CG.Brush.GridSelectionBackground" Color="#FF094771"/>
+    <SolidColorBrush x:Key="CG.Brush.GridSelectionForeground" Color="#FFFFFFFF"/>
+
+    <SolidColorBrush x:Key="CG.Brush.GridSelectionInactiveBackground" Color="#FF3A5163"/>
+    <SolidColorBrush x:Key="CG.Brush.GridSelectionInactiveForeground" Color="#FFF3F3F3"/>
+
+    <SolidColorBrush x:Key="CG.Brush.GridRowHoverBackground" Color="#FF333B46"/>
+    <SolidColorBrush x:Key="CG.Brush.GridCellHoverBackground" Color="#FF333B46"/>
+
+    <SolidColorBrush x:Key="CG.Brush.GridFocusBorder" Color="#FF0078D4"/>
+    <SolidColorBrush x:Key="CG.Brush.GridCurrentCellBorder" Color="#FF7FC8FF"/>
+
+    <SolidColorBrush x:Key="CG.Brush.GridSortArrow" Color="#FFF3F3F3"/>
 
 </ResourceDictionary>
