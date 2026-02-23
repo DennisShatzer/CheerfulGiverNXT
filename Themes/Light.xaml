@@ -1,0 +1,137 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        =====================================================================
+        CheerfulGiverNXT Theme Palette (LIGHT)
+        =====================================================================
+
+        PURPOSE
+        =======
+        This file defines ONLY colors (Brush resources). All windows/styles in
+        the application reference these keys using DynamicResource so you can
+        tune the UI in one place without touching workflow, ViewModels, SQL, or
+        SKY API calls.
+
+        HOW TO TUNE
+        ===========
+        1) Edit colors here (and in Dark.xaml) to change the look globally.
+        2) Keep the KEY NAMES identical between Light.xaml and Dark.xaml.
+        3) Prefer updating brush values here instead of hard-coding colors in
+           individual windows.
+
+        WHERE THESE KEYS ARE USED (high-level map)
+        ==========================================
+        CG.Brush.WindowBackground
+          - Window.Background on MainWindow, GiftWindow, and admin windows.
+          - The "app chrome" area behind cards/panels.
+
+        CG.Brush.Surface
+          - Card/panel backgrounds.
+          - DataGrid Background / RowBackground.
+
+        CG.Brush.SurfaceAlt
+          - Secondary button backgrounds.
+          - Subtle alternate surfaces (headers/utility areas).
+
+        CG.Brush.TextPrimary / CG.Brush.TextMuted
+          - Default foregrounds.
+          - Muted text: hints, secondary status text, countdowns.
+
+        CG.Brush.Border / CG.Brush.BorderStrong
+          - Card/panel borders.
+          - Secondary button borders.
+
+        CG.Brush.InputBackground / CG.Brush.InputBorder
+          - TextBox / DatePicker textbox background + border.
+
+        CG.Brush.Accent / CG.Brush.AccentForeground
+          - Primary buttons.
+          - Progress bar fill.
+          - Theme toggle "ON" state.
+
+        CG.Brush.GridLines / CG.Brush.GridAltRow
+          - DataGrid horizontal gridlines + alternating row fill.
+
+        CG.Brush.ProgressTrack
+          - Status bar progress bar track.
+
+        CG.Brush.Danger / CG.Brush.DangerForeground
+          - Destructive actions (ex: Delete) if/when used.
+
+        Banner/Callout keys
+          - GiftWindow success/info banners and match challenge callouts.
+
+        TIP
+        ===
+        If you change a key name here, you MUST change it everywhere it's used.
+        Keeping keys stable is what guarantees "UI-only" changes.
+    -->
+
+    <!-- ===== Core surfaces ===== -->
+    <SolidColorBrush x:Key="CG.Brush.WindowBackground" Color="#FFF7F7F7"/>
+    <SolidColorBrush x:Key="CG.Brush.Surface"          Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="CG.Brush.SurfaceAlt"       Color="#FFF3F3F3"/>
+
+    <!-- ===== Text ===== -->
+    <SolidColorBrush x:Key="CG.Brush.TextPrimary"      Color="#FF111111"/>
+    <SolidColorBrush x:Key="CG.Brush.TextMuted"        Color="#FF555555"/>
+
+    <!-- ===== Borders ===== -->
+    <SolidColorBrush x:Key="CG.Brush.Border"           Color="#FFE2E2E2"/>
+    <SolidColorBrush x:Key="CG.Brush.BorderStrong"     Color="#FFCCCCCC"/>
+
+    <!-- ===== Inputs ===== -->
+    <SolidColorBrush x:Key="CG.Brush.InputBackground"  Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="CG.Brush.InputBorder"      Color="#FFCCCCCC"/>
+
+    <!-- ===== Accent / buttons ===== -->
+    <SolidColorBrush x:Key="CG.Brush.Accent"           Color="#FF0078D4"/>
+    <SolidColorBrush x:Key="CG.Brush.AccentForeground" Color="#FFFFFFFF"/>
+
+    <!-- ===== DataGrid ===== -->
+    <SolidColorBrush x:Key="CG.Brush.GridLines"        Color="#FFE6E6E6"/>
+    <SolidColorBrush x:Key="CG.Brush.GridAltRow"       Color="#FFF9F9F9"/>
+
+    <!-- ===== DataGrid Column Headers ===== -->
+    <!--
+        DataGrid column headers do NOT automatically "darken" in WPF unless you are using
+        High Contrast or a framework that themes system colors. We explicitly theme them.
+
+        Keys used by MainWindow Results grid (and safe to reuse for other DataGrids):
+          - CG.Brush.GridHeaderBackground         : header bar background
+          - CG.Brush.GridHeaderForeground         : header text + sort arrow
+          - CG.Brush.GridHeaderHoverBackground    : hover state background
+          - CG.Brush.GridHeaderPressedBackground  : pressed state background
+          - CG.Brush.GridHeaderBorder             : bottom border (separates headers from rows)
+    -->
+    <SolidColorBrush x:Key="CG.Brush.GridHeaderBackground"        Color="#FFF1F1F1"/>
+    <SolidColorBrush x:Key="CG.Brush.GridHeaderForeground"        Color="#FF111111"/>
+    <SolidColorBrush x:Key="CG.Brush.GridHeaderHoverBackground"   Color="#FFE8E8E8"/>
+    <SolidColorBrush x:Key="CG.Brush.GridHeaderPressedBackground" Color="#FFDEDEDE"/>
+    <SolidColorBrush x:Key="CG.Brush.GridHeaderBorder"            Color="#FFE6E6E6"/>
+
+    <!-- ===== Progress ===== -->
+    <SolidColorBrush x:Key="CG.Brush.ProgressTrack"    Color="#FFE6E6E6"/>
+
+    <!-- ===== Semantic colors ===== -->
+    <SolidColorBrush x:Key="CG.Brush.Danger"           Color="#FFB00020"/>
+    <SolidColorBrush x:Key="CG.Brush.DangerForeground" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="CG.Brush.Warning"          Color="#FF7A4E00"/>
+
+    <!-- Success / Info banners (GiftWindow) -->
+    <SolidColorBrush x:Key="CG.Brush.Banner.SuccessBackground" Color="#D1FAE5"/>
+    <SolidColorBrush x:Key="CG.Brush.Banner.SuccessBorder"     Color="#A7F3D0"/>
+    <SolidColorBrush x:Key="CG.Brush.Banner.SuccessText"       Color="#065F46"/>
+
+    <SolidColorBrush x:Key="CG.Brush.Banner.InfoBackground"    Color="#DBEAFE"/>
+    <SolidColorBrush x:Key="CG.Brush.Banner.InfoBorder"        Color="#BFDBFE"/>
+    <SolidColorBrush x:Key="CG.Brush.Banner.InfoText"          Color="#1E3A8A"/>
+
+    <!-- Match challenge callout (GiftWindow) -->
+    <SolidColorBrush x:Key="CG.Brush.Callout.MatchBackground"  Color="#FFE8F1FB"/>
+    <SolidColorBrush x:Key="CG.Brush.Callout.MatchBorder"      Color="#FFB7D7F7"/>
+    <SolidColorBrush x:Key="CG.Brush.Callout.MatchTitle"       Color="#FF0B4A8B"/>
+    <SolidColorBrush x:Key="CG.Brush.Callout.MatchDetail"      Color="#FF2B5C8A"/>
+
+</ResourceDictionary>

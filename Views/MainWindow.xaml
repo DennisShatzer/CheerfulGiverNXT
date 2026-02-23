@@ -8,23 +8,66 @@
         Height="720"
         Width="1100"
         WindowStartupLocation="CenterScreen"
-        WindowState="Maximized">
+        WindowState="Maximized" Background="{DynamicResource CG.Brush.WindowBackground}" Foreground="{DynamicResource CG.Brush.TextPrimary}">
 
     <Window.Resources>
-        
+
+        <!--
+            ==================================================================
+            THEME / DynamicResource QUICK GUIDE (MainWindow)
+            ==================================================================
+
+            This window intentionally DOES NOT hard-code colors. Instead it uses
+            DynamicResource keys defined in:
+              - Themes/Light.xaml
+              - Themes/Dark.xaml
+
+            Why DynamicResource?
+              - When ThemeManager swaps the theme dictionary at runtime, the UI
+                updates immediately without recreating windows or touching any
+                workflow logic.
+
+            Key-to-UI mapping you will most commonly tune:
+
+              CG.Brush.WindowBackground
+                - Window.Background (the overall app backdrop)
+
+              CG.Brush.Surface / CG.Brush.SurfaceAlt
+                - "Card" surfaces and secondary button fills
+                - DataGrid Background and RowBackground
+
+              CG.Brush.TextPrimary / CG.Brush.TextMuted
+                - Normal text vs. helper/status text
+
+              CG.Brush.Border / CG.Brush.BorderStrong
+                - Card borders, DataGrid border, secondary button borders
+
+              CG.Brush.InputBackground / CG.Brush.InputBorder
+                - Search TextBox background and border
+
+              CG.Brush.Accent / CG.Brush.AccentForeground
+                - Primary buttons, progress bar fill, theme toggle "ON" state
+
+              CG.Brush.GridLines / CG.Brush.GridAltRow
+                - DataGrid line + alternating row color
+
+              CG.Brush.ProgressTrack
+                - Status bar progress bar background
+        -->
+
+        <!-- ===== Basic sizing (define BEFORE any StaticResource references) ===== -->
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Font.Base">16</sys:Double>
+        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Input.Height">34</sys:Double>
+        <Thickness x:Key="Input.Padding">10,6,10,6</Thickness>
+        <CornerRadius x:Key="Corner.Button">6</CornerRadius>
+
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <!-- Implicit TextBlock: make all text readable by default -->
         <Style TargetType="{x:Type TextBlock}">
             <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
-
-<BooleanToVisibilityConverter x:Key="BoolToVis"/>
-
-        <!-- ===== Basic sizing ===== -->
-        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Font.Base">16</sys:Double>
-        <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="Input.Height">34</sys:Double>
-        <Thickness x:Key="Input.Padding">10,6,10,6</Thickness>
-        <CornerRadius x:Key="Corner.Button">6</CornerRadius>
 
         <!-- ===== Text ===== -->
         <Style x:Key="LabelText" TargetType="{x:Type TextBlock}">
@@ -38,6 +81,17 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+
+            <!--
+                INPUT BRUSHES
+                - CG.Brush.InputBackground : TextBox fill
+                - CG.Brush.TextPrimary     : typed text
+                - CG.Brush.InputBorder     : border / focus ring baseline
+                Tune in Themes/Light.xaml and Themes/Dark.xaml.
+            -->
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <!-- ===== Buttons (simple, easy to edit) ===== -->
@@ -71,10 +125,16 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FF0078D4"/>
-            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+
+            <!--
+                PRIMARY BUTTON BRUSHES
+                - CG.Brush.Accent           : background + border
+                - CG.Brush.AccentForeground : text
+            -->
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.AccentForeground}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
@@ -83,10 +143,17 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="120"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FFF3F3F3"/>
-            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+
+            <!--
+                SECONDARY BUTTON BRUSHES
+                - CG.Brush.SurfaceAlt   : background
+                - CG.Brush.BorderStrong : border
+                - CG.Brush.TextPrimary  : text
+            -->
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
@@ -103,11 +170,23 @@
             <Setter Property="ColumnHeaderHeight" Value="36"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#FFE6E6E6"/>
+
+            <!--
+                DATAGRID BRUSHES
+                - CG.Brush.GridLines  : horizontal separators
+                - CG.Brush.GridAltRow : alternating row fill
+                - CG.Brush.Border     : outer border
+                - CG.Brush.Surface    : base background (rows + grid)
+                - CG.Brush.TextPrimary: cell text default
+            -->
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource CG.Brush.GridLines}"/>
             <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
-            <Setter Property="AlternatingRowBackground" Value="#FFF9F9F9"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource CG.Brush.GridAltRow}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Surface}"/>
+            <Setter Property="RowBackground" Value="{DynamicResource CG.Brush.Surface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
         </Style>
 
         <Style x:Key="ResultsCell" TargetType="{x:Type DataGridCell}">
@@ -115,20 +194,107 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
-        <Style x:Key="ResultsHeader" TargetType="{x:Type DataGridColumnHeader}">
+                        <!--
+            ResultsHeader (DataGrid column header styling)
+            ==============================================
+            This grid uses a slightly roomier header padding and header height.
+
+            IMPORTANT:
+              - The ACTUAL theming (Background/Foreground/SortArrow/Grippers/etc.) is applied
+                globally in App.xaml via the default Style for DataGridColumnHeader.
+              - That global style uses the DynamicResource keys below, so the header switches
+                live when you toggle Light/Dark.
+
+            DynamicResource brush mapping (tune these in Themes/Light.xaml + Themes/Dark.xaml):
+              - CG.Brush.GridHeaderBackground        : normal header background
+              - CG.Brush.GridHeaderForeground        : header text + sort arrow
+              - CG.Brush.GridHeaderHoverBackground   : mouse-over background
+              - CG.Brush.GridHeaderPressedBackground : pressed background
+              - CG.Brush.GridHeaderBorder            : bottom border separating header from rows
+        -->
+        <Style x:Key="ResultsHeader"
+               TargetType="{x:Type DataGridColumnHeader}"
+               BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+            <!-- Slightly roomier padding for the MainWindow results list -->
             <Setter Property="Padding" Value="10,0,10,0"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
         <!-- ===== Status bar progress (force Microsoft blue, align with status text) ===== -->
         <Style x:Key="StatusProgressBar" TargetType="{x:Type ProgressBar}">
             <!-- Microsoft blue (Windows 10 accent) -->
-            <Setter Property="Foreground" Value="#FF0078D4"/>
-            <Setter Property="Background" Value="#FFE6E6E6"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.ProgressTrack}"/>
             <!-- Match the larger status text better than the default tiny bar -->
             <Setter Property="Height" Value="18"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!--
+            Theme toggle (non-intrusive)
+            ============================
+            This is a small "switch" shown in the MainWindow StatusBar.
+
+            Brush usage:
+              OFF state:
+                - Track background: CG.Brush.SurfaceAlt
+                - Track border:     CG.Brush.BorderStrong
+              ON state:
+                - Track background: CG.Brush.Accent
+                - Track border:     CG.Brush.Accent
+              Thumb:
+                - CG.Brush.AccentForeground (kept high-contrast in both themes)
+        -->
+        <Style x:Key="ThemeToggle.Switch" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="ToolTip" Value="Toggle Light/Dark theme"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="Track"
+                                    CornerRadius="11"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"/>
+
+                            <Ellipse x:Name="Thumb"
+                                     Width="18" Height="18"
+                                     Fill="{DynamicResource CG.Brush.AccentForeground}"
+                                     Margin="2,0,2,0"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                            </Trigger>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.95"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ThemeToggle.Label" TargetType="{x:Type TextBlock}">
+            <!-- Slightly smaller than your base UI font so it's informative but not "loud" -->
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextMuted}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
         </Style>
     </Window.Resources>
 
@@ -200,7 +366,7 @@
                          Text="{Binding SubscriptionKey, Mode=OneWay}" IsReadOnly="True" Margin="0,0,0,6"/>
 
                 <TextBlock Grid.Row="3" Grid.Column="1"
-                           Foreground="Gray"
+                           Foreground="{DynamicResource CG.Brush.TextMuted}"
                            Text="Tokens and subscription key are stored in SQL. Click “Authorize this PC” once per computer."
                            TextWrapping="Wrap"/>
             </Grid>
@@ -252,9 +418,9 @@
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>
 
-            <StatusBarItem HorizontalAlignment="Right">
+            <StatusBarItem HorizontalAlignment="Right" DockPanel.Dock="Right">
                 <TextBlock x:Name="TokenCountdownTextBlock"
-                           Foreground="Gray"
+                           Foreground="{DynamicResource CG.Brush.TextMuted}"
                            Margin="0,0,10,0"
                            TextAlignment="Right"/>
             </StatusBarItem>
@@ -264,6 +430,25 @@
                              Width="180"
                              IsIndeterminate="True"
                              Visibility="{Binding BusyVisibility}"/>
+            </StatusBarItem>
+
+            <!--
+                Theme toggle (Light/Dark)
+                - This is intentionally small and kept in the StatusBar so it
+                  doesn't clutter the main workflow UI.
+                - The label text is updated in MainWindow.xaml.cs so it always
+                  reflects the current theme mode.
+            -->
+            <StatusBarItem HorizontalAlignment="Right" DockPanel.Dock="Right">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <ToggleButton x:Name="ThemeToggleButton"
+                                  Style="{StaticResource ThemeToggle.Switch}"
+                                  Checked="ThemeToggle_Checked"
+                                  Unchecked="ThemeToggle_Unchecked"/>
+                    <TextBlock x:Name="ThemeToggleLabel"
+                               Style="{StaticResource ThemeToggle.Label}"
+                               Text="Light"/>
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
     </Grid>

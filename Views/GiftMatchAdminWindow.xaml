@@ -12,7 +12,7 @@
         MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        Background="#FFF7F7F7">
+        Background="{DynamicResource CG.Brush.WindowBackground}" Foreground="{DynamicResource CG.Brush.TextPrimary}">
 
     <Window.Resources>
 
@@ -28,7 +28,7 @@
         <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}"/>
 
         <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-            <Setter Property="Foreground" Value="#FF555555"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextMuted}"/>
         </Style>
 
         <Style x:Key="InputTextBox" TargetType="TextBox">
@@ -36,6 +36,9 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="Button">
@@ -61,10 +64,10 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="170"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FF0078D4"/>
-            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.AccentForeground}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
@@ -73,26 +76,26 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="150"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FFF3F3F3"/>
-            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
         <Style x:Key="HeaderCard" TargetType="Border">
-            <Setter Property="Background" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Surface}"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="Padding" Value="16"/>
-            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
         <Style x:Key="SectionGroupBox" TargetType="GroupBox">
             <Setter Property="Margin" Value="0,0,0,16"/>
             <Setter Property="Padding" Value="14"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Surface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
@@ -106,11 +109,14 @@
             <Setter Property="ColumnHeaderHeight" Value="36"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#FFE6E6E6"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource CG.Brush.GridLines}"/>
             <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
-            <Setter Property="AlternatingRowBackground" Value="#FFF9F9F9"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource CG.Brush.GridAltRow}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Surface}"/>
+            <Setter Property="RowBackground" Value="{DynamicResource CG.Brush.Surface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
         </Style>
 
     </Window.Resources>
@@ -251,7 +257,7 @@
         </ScrollViewer>
 
         <!-- Footer / status -->
-        <Border Grid.Row="2" Background="#FFFDFDFD" BorderBrush="#FFE2E2E2" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
+        <Border Grid.Row="2" Background="{DynamicResource CG.Brush.Surface}" BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
             <DockPanel>
                 <Button x:Name="RefreshButton" DockPanel.Dock="Right" Content="Refresh" Style="{StaticResource Button.Secondary}" />
                 <TextBlock VerticalAlignment="Center" Text="{Binding StatusText}" />

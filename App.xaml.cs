@@ -2,6 +2,7 @@ using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Data;
 using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.Infrastructure.Logging;
+using CheerfulGiverNXT.Infrastructure.Theming;
 using System;
 using System.Configuration;
 using System.Net.Http;
@@ -69,6 +70,10 @@ namespace CheerfulGiverNXT
 
             try
             {
+                // UI-only: load theme resources before any windows are created.
+                ThemeManager.Apply(AppTheme.Light);
+
+
                 var sqlConnStr =
                     ConfigurationManager.ConnectionStrings["CheerfulGiver"]?.ConnectionString
                     ?? throw new InvalidOperationException("Missing connection string 'CheerfulGiver' in App.config.");

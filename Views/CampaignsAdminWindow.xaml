@@ -12,7 +12,7 @@
         MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        Background="#FFF7F7F7">
+        Background="{DynamicResource CG.Brush.WindowBackground}" Foreground="{DynamicResource CG.Brush.TextPrimary}">
 
     <Window.Resources>
         <sys:Double x:Key="Font.Base">16</sys:Double>
@@ -25,7 +25,7 @@
         <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}"/>
 
         <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-            <Setter Property="Foreground" Value="#FF555555"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextMuted}"/>
         </Style>
 
         <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="Button">
@@ -43,22 +43,22 @@
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
             <Setter Property="Padding" Value="14,8"/>
             <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
-            <Setter Property="Background" Value="#FF0078D4"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.AccentForeground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
         <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-            <Setter Property="Background" Value="#FFF0F0F0"/>
-            <Setter Property="Foreground" Value="#FF222222"/>
-            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
         </Style>
 
         <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-            <Setter Property="Background" Value="#FFB00020"/>
-            <Setter Property="BorderBrush" Value="#FFB00020"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Danger}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Danger}"/>
         </Style>
     </Window.Resources>
 
@@ -84,8 +84,11 @@
         </DockPanel>
 
         <!-- Grid -->
-        <Border Grid.Row="2" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" CornerRadius="8">
+        <Border Grid.Row="2" Background="{DynamicResource CG.Brush.Surface}" BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" CornerRadius="8">
             <DataGrid x:Name="CampaignsGrid"
+                      Background="{DynamicResource CG.Brush.Surface}"
+                      Foreground="{DynamicResource CG.Brush.TextPrimary}"
+                      BorderBrush="{DynamicResource CG.Brush.Border}"
                       ItemsSource="{Binding Rows}"
                       SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                       AutoGenerateColumns="False"

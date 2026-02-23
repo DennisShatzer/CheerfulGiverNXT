@@ -6,11 +6,15 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using CheerfulGiverNXT.Infrastructure.Logging;
+using CheerfulGiverNXT.Infrastructure.Theming;
 
 namespace CheerfulGiverNXT
 {
     public partial class MainWindow : Window
     {
+        // Prevent re-entrancy / loops when we set ThemeToggleButton.IsChecked in code.
+        private bool _suppressThemeToggleEvents;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -23,6 +27,10 @@ namespace CheerfulGiverNXT
 
             Loaded += async (_, __) =>
             {
+                // Ensure the UI toggle reflects the currently-applied theme.
+                // This is UI-only state; it does NOT touch workflow, storage, or services.
+                SyncThemeToggleFromThemeManager();
+
                 await Dispatcher.InvokeAsync(() =>
                 {
                     SearchTextBox.Focus();
@@ -33,6 +41,54 @@ namespace CheerfulGiverNXT
                 // Refresh the hidden auth preview (kept for diagnostics; UI is hidden)
                 await vm.RefreshAuthPreviewAsync();
             };
+        }
+
+        // ------------------------------
+        // Light/Dark Theme Toggle (UI-only)
+        // ------------------------------
+        // The theme palette is defined in Themes/Light.xaml and Themes/Dark.xaml.
+        // This handler simply swaps ResourceDictionaries via ThemeManager.
+
+        private void ThemeToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressThemeToggleEvents) return;
+
+            ThemeManager.Apply(AppTheme.Dark);
+            UpdateThemeToggleLabel();
+        }
+
+        private void ThemeToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressThemeToggleEvents) return;
+
+            ThemeManager.Apply(AppTheme.Light);
+            UpdateThemeToggleLabel();
+        }
+
+        private void SyncThemeToggleFromThemeManager()
+        {
+            try
+            {
+                _suppressThemeToggleEvents = true;
+
+                // Checked = Dark, Unchecked = Light
+                if (ThemeToggleButton != null)
+                    ThemeToggleButton.IsChecked = ThemeManager.Current == AppTheme.Dark;
+
+                UpdateThemeToggleLabel();
+            }
+            finally
+            {
+                _suppressThemeToggleEvents = false;
+            }
+        }
+
+        private void UpdateThemeToggleLabel()
+        {
+            if (ThemeToggleLabel == null) return;
+
+            // Keep the label simple + non-intrusive.
+            ThemeToggleLabel.Text = (ThemeManager.Current == AppTheme.Dark) ? "Dark" : "Light";
         }
 
         private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)

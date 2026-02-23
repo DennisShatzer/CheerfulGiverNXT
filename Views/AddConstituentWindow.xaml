@@ -4,7 +4,7 @@
         Title="Add Constituent"
         Height="520"
         Width="560"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource CG.Brush.WindowBackground}" Foreground="{DynamicResource CG.Brush.TextPrimary}">
 
     <Window.Resources>
         
@@ -31,6 +31,9 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <Style x:Key="InputMultiline" TargetType="{x:Type TextBox}" BasedOn="{StaticResource InputTextBox}">
@@ -63,10 +66,10 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FF0078D4"/>
-            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.AccentForeground}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
@@ -75,10 +78,10 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FFF3F3F3"/>
-            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
     </Window.Resources>
@@ -90,7 +93,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Background="#FFF7F7F7" BorderBrush="#FFE0E0E0" BorderThickness="1" Padding="10" CornerRadius="6">
+        <Border Background="{DynamicResource CG.Brush.WindowBackground}" BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" Padding="10" CornerRadius="6">
             <StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="Draft new constituent"/>
                 <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">

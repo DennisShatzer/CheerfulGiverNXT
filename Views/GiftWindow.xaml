@@ -6,7 +6,7 @@
         MinWidth="900"
         MinHeight="680"
         Title="Create Pledge"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource CG.Brush.WindowBackground}" Foreground="{DynamicResource CG.Brush.TextPrimary}">
 
     <Window.Resources>
         
@@ -33,6 +33,9 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <Style x:Key="InputComboBox" TargetType="{x:Type ComboBox}">
@@ -40,6 +43,9 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <Style x:Key="InputDatePicker" TargetType="{x:Type DatePicker}">
@@ -47,6 +53,9 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.InputBorder}"/>
         </Style>
 
         <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="{x:Type Button}">
@@ -72,10 +81,10 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FF0078D4"/>
-            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Accent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Accent}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.AccentForeground}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
@@ -84,10 +93,10 @@
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Padding" Value="14,4"/>
-            <Setter Property="Background" Value="#FFF3F3F3"/>
-            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.SurfaceAlt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.BorderStrong}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.TextPrimary}"/>
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
     </Window.Resources>
@@ -104,8 +113,8 @@
         <StackPanel Grid.Row="0">
 
             <!-- Remaining Match Budget banner (oldest active challenge) -->
-            <Border Background="#FFE8F1FB"
-                    BorderBrush="#FFB7D7F7"
+            <Border Background="{DynamicResource CG.Brush.Callout.MatchBackground}"
+                    BorderBrush="{DynamicResource CG.Brush.Callout.MatchBorder}"
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="10"
@@ -124,18 +133,18 @@
                     <StackPanel Grid.Row="0" Grid.Column="0">
                         <TextBlock Text="{Binding MatchBannerTitle}"
                                    FontWeight="SemiBold"
-                                   Foreground="#FF0B4A8B"/>
+                                   Foreground="{DynamicResource CG.Brush.Callout.MatchTitle}"/>
 
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <TextBlock Text="Remaining: " Foreground="#FF0B4A8B"/>
-                            <TextBlock Text="{Binding ActiveMatchRemaining, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="#FF0B4A8B"/>
-                            <TextBlock Text=" of " Foreground="#FF0B4A8B"/>
-                            <TextBlock Text="{Binding ActiveMatchBudget, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="#FF0B4A8B"/>
+                            <TextBlock Text="Remaining: " Foreground="{DynamicResource CG.Brush.Callout.MatchTitle}"/>
+                            <TextBlock Text="{Binding ActiveMatchRemaining, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="{DynamicResource CG.Brush.Callout.MatchTitle}"/>
+                            <TextBlock Text=" of " Foreground="{DynamicResource CG.Brush.Callout.MatchTitle}"/>
+                            <TextBlock Text="{Binding ActiveMatchBudget, StringFormat={}{0:C}}" FontWeight="SemiBold" Foreground="{DynamicResource CG.Brush.Callout.MatchTitle}"/>
                         </StackPanel>
 
                         <TextBlock Text="{Binding TotalMatchRemaining, StringFormat=Total remaining across all challenges: {0:C}}"
                                    FontSize="14"
-                                   Foreground="#FF2B5C8A"
+                                   Foreground="{DynamicResource CG.Brush.Callout.MatchDetail}"
                                    Margin="0,3,0,0"
                                    Visibility="{Binding HasMultipleActiveMatchChallenges, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
@@ -145,7 +154,7 @@
                                Margin="12,0,0,0"
                                Text="{Binding ActiveMatchUsed, StringFormat=Used {0:C}}"
                                FontSize="14"
-                               Foreground="#FF2B5C8A"/>
+                               Foreground="{DynamicResource CG.Brush.Callout.MatchDetail}"/>
 
                     <ProgressBar Grid.Row="1" Grid.ColumnSpan="2"
                                  Height="18"
@@ -153,18 +162,18 @@
                                  Minimum="0"
                                  Maximum="{Binding ActiveMatchBudget, Mode=OneWay}"
                                  Value="{Binding ActiveMatchUsed, Mode=OneWay}"
-                                 Foreground="#FF0078D4"
-                                 Background="#FFE6E6E6"/>
+                                 Foreground="{DynamicResource CG.Brush.Accent}"
+                                 Background="{DynamicResource CG.Brush.ProgressTrack}"/>
                 </Grid>
             </Border>
 
             <!-- Constituent header + banner -->
-            <Border BorderBrush="#DDD" BorderThickness="1" Padding="10" CornerRadius="6">
+            <Border BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" Padding="10" CornerRadius="6">
                 <StackPanel>
                     <!-- Visible only when NewConstituent == true (set by code-behind) -->
                     <Border x:Name="NewConstituentBanner"
-                            Background="#D1FAE5"
-                            BorderBrush="#A7F3D0"
+                            Background="{DynamicResource CG.Brush.Banner.SuccessBackground}"
+                            BorderBrush="{DynamicResource CG.Brush.Banner.SuccessBorder}"
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="8"
@@ -172,14 +181,14 @@
                             Visibility="Collapsed">
                         <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
                                    FontWeight="SemiBold"
-                                   Foreground="#065F46"/>
+                                   Foreground="{DynamicResource CG.Brush.Banner.SuccessText}"/>
                     </Border>
 
                     
                     <!-- Visible only when IsFirstTimeGiver == true (set by code-behind) -->
                     <Border x:Name="FirstTimeGiverBanner"
-                            Background="#DBEAFE"
-                            BorderBrush="#BFDBFE"
+                            Background="{DynamicResource CG.Brush.Banner.InfoBackground}"
+                            BorderBrush="{DynamicResource CG.Brush.Banner.InfoBorder}"
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="8"
@@ -187,7 +196,7 @@
                             Visibility="Collapsed">
                         <TextBlock Text="FIRST TIME GIVER (no prior counted gifts found)"
                                    FontWeight="SemiBold"
-                                   Foreground="#1E3A8A"/>
+                                   Foreground="{DynamicResource CG.Brush.Banner.InfoText}"/>
                     </Border>
 
 <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
@@ -285,7 +294,7 @@
 
             <TextBlock Grid.Row="4" Grid.Column="1"
                        Text="{Binding SponsorshipAvailabilityStatus}"
-                       Foreground="Gray"
+                       Foreground="{DynamicResource CG.Brush.TextMuted}"
                        FontSize="14"
                        Margin="2,4,0,0"
                        Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
@@ -307,7 +316,7 @@
                               HeadersVisibility="Column"
                               GridLinesVisibility="Horizontal"
                               FontSize="{StaticResource Font.Base}"
-                              Height="190">
+                              Height="190" Background="{DynamicResource CG.Brush.Surface}" Foreground="{DynamicResource CG.Brush.TextPrimary}" BorderBrush="{DynamicResource CG.Brush.Border}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Pledge date" Binding="{Binding PledgeDate, StringFormat=d}" Width="115"/>
                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=C}" Width="95"/>
@@ -320,7 +329,7 @@
                     </DataGrid>
 
                     <TextBlock Text="{Binding ExistingCampaignGiftsStatus}"
-                               Foreground="Gray"
+                               Foreground="{DynamicResource CG.Brush.TextMuted}"
                                FontSize="14"
                                Margin="0,6,0,0"/>
                 </StackPanel>
@@ -339,7 +348,7 @@
         <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
             <TextBlock DockPanel.Dock="Left"
                        VerticalAlignment="Center"
-                       Foreground="Gray"
+                       Foreground="{DynamicResource CG.Brush.TextMuted}"
                        Text="{Binding StatusText}"
                        TextWrapping="Wrap"/>
 
