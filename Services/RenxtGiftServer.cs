@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.AppMode;
 
 namespace CheerfulGiverNXT.Services
 {
@@ -203,6 +204,10 @@ namespace CheerfulGiverNXT.Services
         public async Task<CreatePledgeResult> CreatePledgeAsync(CreatePledgeRequest req, CancellationToken ct = default)
         {
             Validate(req);
+
+            // HARD GUARD: never allow pledge posting when Demo mode is enabled or when disabled by config.
+            if (!SkyPostingPolicy.IsPostingAllowed(out var reason))
+                throw new InvalidOperationException("SKY API pledge posting is disabled. " + (reason ?? string.Empty));
 
             var payload = new
             {

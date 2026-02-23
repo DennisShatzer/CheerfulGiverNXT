@@ -21,6 +21,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CheerfulGiverNXT.Infrastructure.Logging;
+using CheerfulGiverNXT.Infrastructure.AppMode;
 
 namespace CheerfulGiverNXT.ViewModels
 {
@@ -920,6 +921,9 @@ WHERE CampaignRecordId = @Id;";
 
         private async Task SaveAsync()
         {
+            // Snapshot current mode at save time (operators can toggle Demo while a workflow is open).
+            _workflow.IsDemo = _workflow.IsDemo || AppModeState.Instance.IsDemo;
+
             // Ensure we have the current CampaignRecordId before validating sponsorship availability.
             // This prevents querying sponsorship reservations across *all* campaigns (false positives).
             if (string.IsNullOrWhiteSpace(CampaignIdText) && _campaignRecordIdFromContext is null)
@@ -1040,9 +1044,30 @@ WHERE CampaignRecordId = @Id;";
                     AddInstallmentsIfMissing: true
                 );
 
+                _workflow.Api.RequestJson = JsonSerializer.Serialize(req);
+
+                // HARD GUARD: in Demo mode (or when posting is disabled by config), never post to SKY API.
+                if (!SkyPostingPolicy.IsPostingAllowed(out var blockReason))
+                {
+                    _workflow.IsDemo = true;
+                    _workflow.Api.Attempted = false;
+                    _workflow.Api.AttemptedAtUtc = null;
+                    _workflow.Api.Success = false;
+                    _workflow.Api.GiftId = null;
+                    _workflow.Api.ErrorMessage = blockReason;
+                    _workflow.AddTrail("SkyPostSuppressed", blockReason);
+                    _workflow.Status = WorkflowStatus.ReadyToSubmit;
+
+                    StatusText = AppModeState.Instance.IsDemo
+                        ? "Saved (Demo). Not sent to SKY API."
+                        : ("Saved locally. " + (blockReason ?? "SKY API posting is disabled."));
+
+                    RequestClose?.Invoke(this, EventArgs.Empty);
+                    return;
+                }
+
                 _workflow.Api.Attempted = true;
                 _workflow.Api.AttemptedAtUtc = DateTime.UtcNow;
-                _workflow.Api.RequestJson = JsonSerializer.Serialize(req);
 
                 var result = await _gifts.CreatePledgeAsync(req);
 

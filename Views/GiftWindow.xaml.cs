@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using CheerfulGiverNXT.Infrastructure.AppMode;
 
 namespace CheerfulGiverNXT
 {
@@ -40,6 +41,25 @@ namespace CheerfulGiverNXT
 
             PreviewKeyDown += GiftWindow_PreviewKeyDown;
             Loaded += GiftWindow_Loaded;
+
+            // Reflect Demo mode in the title for safety (UI-only).
+            ApplyModeUi();
+            AppModeState.Instance.ModeChanged += (_, __) => ApplyModeUi();
+        }
+
+        private string? _baseTitle;
+
+        private void ApplyModeUi()
+        {
+            try
+            {
+                _baseTitle ??= Title;
+                Title = AppModeState.Instance.IsDemo ? (_baseTitle + " — DEMO") : _baseTitle;
+            }
+            catch
+            {
+                // UI-only
+            }
         }
 
         private void GiftWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -55,6 +75,23 @@ namespace CheerfulGiverNXT
                      && (e.Key == Key.F || e.SystemKey == Key.F))
             {
                 dialog = new FirstTimeFundExclusionsWindow();
+            }
+            else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
+                     && (e.Key == Key.D || e.SystemKey == Key.D))
+            {
+                // Ctrl+Shift+D toggles Demo mode
+                e.Handled = true;
+                AppModeState.Instance.Toggle();
+                ApplyModeUi();
+
+                if (DataContext is GiftEntryViewModel vm)
+                {
+                    vm.StatusText = AppModeState.Instance.IsDemo
+                        ? "DEMO mode enabled. Pledges will NOT be posted to SKY API."
+                        : "LIVE mode enabled. Pledges will be posted to SKY API.";
+                }
+
+                return;
             }
 
             if (dialog is null) return;

@@ -13,6 +13,12 @@ public sealed class GiftWorkflowContext
 {
     public Guid WorkflowId { get; init; } = Guid.NewGuid();
 
+    /// <summary>
+    /// True when the workflow was created/entered while the application was in Demo mode.
+    /// Stored in ContextJson so Demo transactions can be safely suppressed without schema changes.
+    /// </summary>
+    public bool IsDemo { get; set; }
+
     public DateTime StartedAtUtc { get; init; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }
 

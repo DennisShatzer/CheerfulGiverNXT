@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using CheerfulGiverNXT.Infrastructure.AppMode;
 
 namespace CheerfulGiverNXT.Services;
 
@@ -69,6 +70,17 @@ public sealed class OutboxQueueProcessor : IDisposable
     {
         if (_loop is not null) return;
 
+        // Demo mode must never post to SKY API.
+        if (!SkyPostingPolicy.IsPostingAllowed(out var reason))
+        {
+            UpdateStatus(s =>
+            {
+                s.IsRunning = false;
+                s.LastMessage = "Suppressed: " + (reason ?? "posting disabled");
+            });
+            return;
+        }
+
         if (!ReadBool("Outbox.Enabled", defaultValue: true))
             return;
 
@@ -109,8 +121,16 @@ public sealed class OutboxQueueProcessor : IDisposable
         {
             try
             {
+                // If Demo mode is enabled while running, fail-closed.
+                if (!SkyPostingPolicy.IsPostingAllowed(out var reason))
+                {
+                    UpdateStatus(s => { s.LastRunUtc = DateTime.UtcNow; s.LastMessage = "Suppressed: " + (reason ?? "posting disabled"); });
+                }
+                else
+                {
                 await ProcessOnceAsync(ct).ConfigureAwait(false);
                 UpdateStatus(s => { s.LastRunUtc = DateTime.UtcNow; s.LastMessage = "Checked"; });
+                }
             }
             catch (OperationCanceledException)
             {
@@ -218,6 +238,10 @@ ORDER BY g.ApiAttemptedAtUtc ASC, w.CreatedAtUtc ASC;";
         }
 
         if (ctx is null)
+            return false;
+
+        // Demo workflows are never eligible for posting.
+        if (ctx.IsDemo)
             return false;
 
         // Already succeeded.

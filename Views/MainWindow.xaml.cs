@@ -7,6 +7,8 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using CheerfulGiverNXT.Infrastructure.Logging;
 using CheerfulGiverNXT.Infrastructure.Theming;
+using CheerfulGiverNXT.Infrastructure.AppMode;
+using System.Windows.Media;
 
 namespace CheerfulGiverNXT
 {
@@ -15,9 +17,13 @@ namespace CheerfulGiverNXT
         // Prevent re-entrancy / loops when we set ThemeToggleButton.IsChecked in code.
         private bool _suppressThemeToggleEvents;
 
+        private readonly string _baseTitle;
+
         public MainWindow()
         {
             InitializeComponent();
+
+            _baseTitle = Title;
 
             var vm = new ConstituentLookupViewModel();
             DataContext = vm;
@@ -31,6 +37,9 @@ namespace CheerfulGiverNXT
                 // This is UI-only state; it does NOT touch workflow, storage, or services.
                 SyncThemeToggleFromThemeManager();
 
+                ApplyModeUi();
+                AppModeState.Instance.ModeChanged += (_, ____) => ApplyModeUi();
+
                 await Dispatcher.InvokeAsync(() =>
                 {
                     SearchTextBox.Focus();
@@ -41,6 +50,33 @@ namespace CheerfulGiverNXT
                 // Refresh the hidden auth preview (kept for diagnostics; UI is hidden)
                 await vm.RefreshAuthPreviewAsync();
             };
+        }
+
+        private void ApplyModeUi()
+        {
+            try
+            {
+                var isDemo = AppModeState.Instance.IsDemo;
+                var modeText = isDemo ? "Mode: Demo" : "Mode: Live";
+
+                if (ModeIndicatorTextBlock != null)
+                {
+                    ModeIndicatorTextBlock.Text = modeText;
+
+                    // Make DEMO more visually obvious.
+                    var demoBrush = TryFindResource("CG.Brush.Accent") as Brush;
+                    var normalBrush = TryFindResource("CG.Brush.TextMuted") as Brush;
+                    ModeIndicatorTextBlock.Foreground = isDemo
+                        ? (demoBrush ?? ModeIndicatorTextBlock.Foreground)
+                        : (normalBrush ?? ModeIndicatorTextBlock.Foreground);
+                }
+
+                Title = isDemo ? (_baseTitle + " — DEMO") : _baseTitle;
+            }
+            catch
+            {
+                // UI-only
+            }
         }
 
         // ------------------------------
@@ -118,6 +154,23 @@ namespace CheerfulGiverNXT
                 if (DataContext is ConstituentLookupViewModel vm)
                     _ = vm.RefreshAuthPreviewAsync();
 
+                return;
+            }
+
+            if (e.Key == Key.D || e.SystemKey == Key.D)
+            {
+                // Ctrl+Shift+D toggles Demo mode
+                e.Handled = true;
+                AppModeState.Instance.Toggle();
+
+                if (DataContext is ConstituentLookupViewModel vm)
+                {
+                    vm.StatusText = AppModeState.Instance.IsDemo
+                        ? "DEMO mode enabled. Pledges will NOT be posted to SKY API."
+                        : "LIVE mode enabled. Pledges will be posted to SKY API.";
+                }
+
+                ApplyModeUi();
                 return;
             }
 
@@ -225,6 +278,9 @@ if (e.Key == Key.F || e.SystemKey == Key.F)
                 };
 
                 var workflow = GiftWorkflowContext.Start(vm.SearchText, snapshot);
+
+                // Snapshot the current app mode into the workflow for audit + suppression.
+                workflow.IsDemo = AppModeState.Instance.IsDemo;
 
                 // Existing placeholder call (kept)
                 var funds = await vm.LookupService.GetContributedFundsAsync(vm.SelectedRow.Id, maxGiftsToScan: 500);

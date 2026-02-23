@@ -314,6 +314,9 @@ WHERE ChallengeRecordId = @Id;";
                 FullName = "Anonymous Match Donor"
             });
 
+        // Preserve Demo tagging for audit consistency.
+        wf.IsDemo = source.IsDemo;
+
         wf.Gift.Amount = amount;
         wf.Gift.Frequency = source.Gift.Frequency;
         wf.Gift.Installments = source.Gift.Installments;

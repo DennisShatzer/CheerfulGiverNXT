@@ -418,6 +418,13 @@
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>
 
+            <StatusBarItem>
+                <TextBlock x:Name="ModeIndicatorTextBlock"
+                           Foreground="{DynamicResource CG.Brush.TextMuted}"
+                           Margin="16,0,0,0"
+                           Text="Mode: Live" />
+            </StatusBarItem>
+
             <StatusBarItem HorizontalAlignment="Right" DockPanel.Dock="Right">
                 <TextBlock x:Name="TokenCountdownTextBlock"
                            Foreground="{DynamicResource CG.Brush.TextMuted}"

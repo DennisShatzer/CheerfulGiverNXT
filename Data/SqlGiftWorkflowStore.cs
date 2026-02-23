@@ -134,7 +134,7 @@ public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
 
         // Sponsorship reservations (Option A) use dbo.CGDatesSponsored.
         // Verify the table exists when a sponsorship is being saved.
-        if (ctx.Gift.Sponsorship.IsEnabled
+        if (!ctx.IsDemo && ctx.Gift.Sponsorship.IsEnabled
             && ctx.Gift.Sponsorship.SponsoredDate.HasValue
             && !string.IsNullOrWhiteSpace(ctx.Gift.Sponsorship.Slot))
         {
@@ -165,7 +165,9 @@ public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
                 await InsertSponsorshipAsync(conn, tx, ctx, ct).ConfigureAwait(false);
 
                 // Reserve the sponsored date/time slot in CGDatesSponsored (Option A).
-                await InsertDateSponsoredReservationAsync(conn, tx, ctx, giftRowId, ct).ConfigureAwait(false);
+                // Demo mode must never affect live sponsorship availability.
+                if (!ctx.IsDemo)
+                    await InsertDateSponsoredReservationAsync(conn, tx, ctx, giftRowId, ct).ConfigureAwait(false);
             }
 
             await tx.CommitAsync(ct).ConfigureAwait(false);
