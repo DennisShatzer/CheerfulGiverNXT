@@ -833,9 +833,22 @@ WHERE CampaignRecordId = @Id;";
                 return;
             }
 
-            // Ensure a date exists once eligible.
-            if (SponsorshipDate is null)
-                SponsorshipDate = DateTime.Today;
+            // IMPORTANT UX: Do NOT auto-select a date.
+            // If sponsorship is eligible but the operator hasn't chosen a date yet,
+            // show the eligible tiers but require a date selection before allowing Save.
+            if (!SponsorshipDate.HasValue)
+            {
+                EligibleSponsorshipOptions = baseEligible;
+                HasAvailableSponsorshipSlots = true;
+
+                // Keep selection if still available, else default to first.
+                if (_selectedSponsorshipOption is null || !baseEligible.Any(x => x.Display == _selectedSponsorshipOption.Display))
+                    SelectedSponsorshipOption = baseEligible[0];
+
+                SponsorshipAvailabilityStatus = "Select a sponsor date to view available slots.";
+                RefreshCanSave();
+                return;
+            }
 
             // If we have a selected date, filter options by what's reserved on that date.
             var filtered = baseEligible
@@ -865,17 +878,10 @@ WHERE CampaignRecordId = @Id;";
                 SelectedSponsorshipOption = filtered[0];
 
             // Friendly status.
-            if (SponsorshipDate.HasValue)
-            {
-                var avail = string.Join(", ", filtered.Select(x => x.Display));
-                SponsorshipAvailabilityStatus = string.IsNullOrWhiteSpace(avail)
-                    ? ""
-                    : $"Available sponsorship slots: {avail}.";
-            }
-            else
-            {
-                SponsorshipAvailabilityStatus = "";
-            }
+            var avail = string.Join(", ", filtered.Select(x => x.Display));
+            SponsorshipAvailabilityStatus = string.IsNullOrWhiteSpace(avail)
+                ? ""
+                : $"Available sponsorship slots: {avail}.";
 
             RefreshCanSave();
         }

@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,6 +16,13 @@ public interface IGiftWorkflowStore
     /// Run Sql/001_CreateGiftWorkflowTables.sql once to create tables.
     /// </summary>
     Task SaveAsync(GiftWorkflowContext ctx, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates ONLY the workflow row (Status/CompletedAtUtc/ContextJson, etc.).
+    /// Does not touch gift/sponsorship child rows.
+    /// Useful for appending audit trail entries after a successful SaveAsync.
+    /// </summary>
+    Task SaveWorkflowOnlyAsync(GiftWorkflowContext ctx, CancellationToken ct = default);
 
     /// <summary>
     /// Lists successful gifts previously saved by this app for the given constituent,
@@ -45,6 +53,19 @@ public interface IGiftWorkflowStore
         int? campaignRecordId,
         DateTime sponsoredDate,
         CancellationToken ct = default);
+
+
+    /// <summary>
+    /// Lists locally committed workflow transactions (for auditing).
+    /// </summary>
+    Task<LocalTransactionItem[]> ListLocalTransactionsAsync(
+        LocalTransactionQuery query,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the stored ContextJson for a workflow.
+    /// </summary>
+    Task<string?> GetWorkflowContextJsonAsync(Guid workflowId, CancellationToken ct = default);
 }
 
 public sealed record GiftHistoryItem(
@@ -57,6 +78,40 @@ public sealed record GiftHistoryItem(
     string? Slot,
     string? Comments,
     DateTime CreatedAtUtc
+);
+
+
+public sealed record LocalTransactionQuery(
+    DateTime? FromUtc,
+    DateTime? ToUtc,
+    string? Search,
+    string? Status,
+    bool? ApiAttempted,
+    bool? ApiSucceeded,
+    int Take = 500
+);
+
+public sealed record LocalTransactionItem(
+    Guid WorkflowId,
+    DateTime CreatedAtUtc,
+    DateTime? CompletedAtUtc,
+    string Status,
+    string MachineName,
+    string WindowsUser,
+    int ConstituentId,
+    string? ConstituentName,
+    bool? IsFirstTimeGiver,
+    bool? IsNewRadioConstituent,
+    decimal? Amount,
+    string? Frequency,
+    int? Installments,
+    DateTime? PledgeDate,
+    DateTime? ApiAttemptedAtUtc,
+    bool? ApiSucceeded,
+    string? ApiGiftId,
+    string? ApiErrorMessage,
+    DateTime? SponsoredDate,
+    string? Slot
 );
 
 public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
@@ -77,24 +132,64 @@ public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
 
         await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
 
+        // Sponsorship reservations (Option A) use dbo.CGDatesSponsored.
+        // Verify the table exists when a sponsorship is being saved.
+        if (ctx.Gift.Sponsorship.IsEnabled
+            && ctx.Gift.Sponsorship.SponsoredDate.HasValue
+            && !string.IsNullOrWhiteSpace(ctx.Gift.Sponsorship.Slot))
+        {
+            var hasDatesSponsored = await TableExistsAsync(conn, "CGDatesSponsored", ct).ConfigureAwait(false);
+            if (!hasDatesSponsored)
+                throw new InvalidOperationException("CGDatesSponsored table is missing. Run the CheerfulGiver schema script to enable sponsorship reservations.");
+        }
+
         await using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
 
         try
         {
             await UpsertWorkflowAsync(conn, tx, ctx, ct).ConfigureAwait(false);
 
+            // Idempotent: remove any prior CGDatesSponsored rows associated with previous gift rows
+            // for this workflow (do this BEFORE deleting the workflow gift rows).
+            await DeleteDatesSponsoredRowsForWorkflowAsync(conn, tx, ctx.WorkflowId, ct).ConfigureAwait(false);
+
             // Idempotent: replace child rows for this workflow
             await DeleteChildrenAsync(conn, tx, ctx.WorkflowId, ct).ConfigureAwait(false);
 
-            await InsertGiftAsync(conn, tx, ctx, ct).ConfigureAwait(false);
+            var giftRowId = await InsertGiftAsync(conn, tx, ctx, ct).ConfigureAwait(false);
 
             if (ctx.Gift.Sponsorship.IsEnabled
                 && ctx.Gift.Sponsorship.SponsoredDate.HasValue
                 && !string.IsNullOrWhiteSpace(ctx.Gift.Sponsorship.Slot))
             {
                 await InsertSponsorshipAsync(conn, tx, ctx, ct).ConfigureAwait(false);
+
+                // Reserve the sponsored date/time slot in CGDatesSponsored (Option A).
+                await InsertDateSponsoredReservationAsync(conn, tx, ctx, giftRowId, ct).ConfigureAwait(false);
             }
 
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public async Task SaveWorkflowOnlyAsync(GiftWorkflowContext ctx, CancellationToken ct = default)
+    {
+        if (ctx is null) throw new ArgumentNullException(nameof(ctx));
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        await using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
+        try
+        {
+            await UpsertWorkflowAsync(conn, tx, ctx, ct).ConfigureAwait(false);
             await tx.CommitAsync(ct).ConfigureAwait(false);
         }
         catch
@@ -260,7 +355,167 @@ WHERE IsCancelled = 0
     }
 
 
-    private static async Task EnsureSchemaPresentAsync(SqlConnection conn, CancellationToken ct)
+    
+    public async Task<LocalTransactionItem[]> ListLocalTransactionsAsync(
+        LocalTransactionQuery query,
+        CancellationToken ct = default)
+    {
+        query ??= new LocalTransactionQuery(null, null, null, null, null, null, 500);
+
+        var take = query.Take <= 0 ? 500 : Math.Min(query.Take, 5000);
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        DateTime? fromUtc = query.FromUtc?.ToUniversalTime();
+        DateTime? toUtc = query.ToUtc?.ToUniversalTime();
+
+        string? search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
+        Guid? workflowId = null;
+        int? constituentId = null;
+        if (search is not null)
+        {
+            if (Guid.TryParse(search, out var g))
+                workflowId = g;
+
+            if (int.TryParse(search, out var i) && i > 0)
+                constituentId = i;
+        }
+
+        string? like = search is null ? null : $"%{search.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]")}%";
+
+        const string sql = @"
+SELECT TOP (@Take)
+    w.WorkflowId,
+    w.CreatedAtUtc,
+    w.CompletedAtUtc,
+    w.Status,
+    w.MachineName,
+    w.WindowsUser,
+    w.ConstituentId,
+    w.ConstituentName,
+    w.IsFirstTimeGiver,
+    w.IsNewRadioConstituent,
+    g.Amount,
+    g.Frequency,
+    g.Installments,
+    g.PledgeDate,
+    g.ApiAttemptedAtUtc,
+    g.ApiSucceeded,
+    g.ApiGiftId,
+    g.ApiErrorMessage,
+    s.SponsoredDate,
+    s.Slot
+FROM dbo.CGGiftWorkflows w
+LEFT JOIN dbo.CGGiftWorkflowGifts g ON g.WorkflowId = w.WorkflowId
+LEFT JOIN dbo.CGGiftWorkflowSponsorships s ON s.WorkflowId = w.WorkflowId
+WHERE (@FromUtc IS NULL OR w.CreatedAtUtc >= @FromUtc)
+  AND (@ToUtc IS NULL OR w.CreatedAtUtc < @ToUtc)
+  AND (@WorkflowId IS NULL OR w.WorkflowId = @WorkflowId)
+  AND (@ConstituentId IS NULL OR w.ConstituentId = @ConstituentId)
+  AND (@Status IS NULL OR w.Status = @Status)
+  AND (@ApiAttempted IS NULL OR (@ApiAttempted = 1 AND g.ApiAttemptedAtUtc IS NOT NULL) OR (@ApiAttempted = 0 AND g.ApiAttemptedAtUtc IS NULL))
+  AND (@ApiSucceeded IS NULL OR g.ApiSucceeded = @ApiSucceeded)
+  AND (@SearchLike IS NULL OR
+        w.ConstituentName LIKE @SearchLike OR
+        w.SearchText LIKE @SearchLike OR
+        w.WindowsUser LIKE @SearchLike OR
+        w.MachineName LIKE @SearchLike OR
+        g.ApiGiftId LIKE @SearchLike OR
+        g.ApiErrorMessage LIKE @SearchLike)
+ORDER BY w.CreatedAtUtc DESC;";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@Take", SqlDbType.Int) { Value = take });
+        cmd.Parameters.Add(new SqlParameter("@FromUtc", SqlDbType.DateTime2) { Value = (object?)fromUtc ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ToUtc", SqlDbType.DateTime2) { Value = (object?)toUtc ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = (object?)workflowId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ConstituentId", SqlDbType.Int) { Value = (object?)constituentId ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@Status", SqlDbType.NVarChar, 30) { Value = (object?)query.Status ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@ApiAttempted", SqlDbType.Bit) { Value = (object?)query.ApiAttempted ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ApiSucceeded", SqlDbType.Bit) { Value = (object?)query.ApiSucceeded ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@SearchLike", SqlDbType.NVarChar, 240) { Value = (object?)like ?? DBNull.Value });
+
+        var list = new List<LocalTransactionItem>(Math.Min(take, 500));
+
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var wfId = (Guid)r["WorkflowId"];
+            var createdAtUtc = (DateTime)r["CreatedAtUtc"];
+            DateTime? completedAtUtc = r["CompletedAtUtc"] is DBNull ? null : (DateTime)r["CompletedAtUtc"];
+
+            var status = (r["Status"] as string ?? "").Trim();
+            var machineName = (r["MachineName"] as string ?? "").Trim();
+            var windowsUser = (r["WindowsUser"] as string ?? "").Trim();
+
+            var cid = r["ConstituentId"] is DBNull ? 0 : (int)r["ConstituentId"];
+            var cname = r["ConstituentName"] is DBNull ? null : (string)r["ConstituentName"];
+
+            bool? isFirst = r["IsFirstTimeGiver"] is DBNull ? null : (bool)r["IsFirstTimeGiver"];
+            bool? isRadio = r["IsNewRadioConstituent"] is DBNull ? null : (bool)r["IsNewRadioConstituent"];
+
+            decimal? amount = r["Amount"] is DBNull ? null : (decimal)r["Amount"];
+            string? frequency = r["Frequency"] is DBNull ? null : (string)r["Frequency"];
+            int? installments = r["Installments"] is DBNull ? null : (int)r["Installments"];
+
+            DateTime? pledgeDate = r["PledgeDate"] is DBNull ? null : (DateTime)r["PledgeDate"];
+            DateTime? apiAttemptedAtUtc = r["ApiAttemptedAtUtc"] is DBNull ? null : (DateTime)r["ApiAttemptedAtUtc"];
+            bool? apiSucceeded = r["ApiSucceeded"] is DBNull ? null : (bool)r["ApiSucceeded"];
+            string? apiGiftId = r["ApiGiftId"] is DBNull ? null : (string)r["ApiGiftId"];
+            string? apiError = r["ApiErrorMessage"] is DBNull ? null : (string)r["ApiErrorMessage"];
+
+            DateTime? sponsoredDate = r["SponsoredDate"] is DBNull ? null : (DateTime)r["SponsoredDate"];
+            string? slot = r["Slot"] is DBNull ? null : (string)r["Slot"];
+
+            list.Add(new LocalTransactionItem(
+                wfId,
+                createdAtUtc,
+                completedAtUtc,
+                status,
+                machineName,
+                windowsUser,
+                cid,
+                cname,
+                isFirst,
+                isRadio,
+                amount,
+                frequency,
+                installments,
+                pledgeDate,
+                apiAttemptedAtUtc,
+                apiSucceeded,
+                apiGiftId,
+                apiError,
+                sponsoredDate,
+                slot));
+        }
+
+        return list.ToArray();
+    }
+
+    public async Task<string?> GetWorkflowContextJsonAsync(Guid workflowId, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        const string sql = @"SELECT ContextJson FROM dbo.CGGiftWorkflows WHERE WorkflowId = @WorkflowId;";
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return obj is DBNull or null ? null : (string)obj;
+    }
+
+private static async Task EnsureSchemaPresentAsync(SqlConnection conn, CancellationToken ct)
     {
         const string sql = @"SELECT OBJECT_ID('dbo.CGGiftWorkflows','U') AS Wf,
                                     OBJECT_ID('dbo.CGGiftWorkflowGifts','U') AS Gifts,
@@ -338,13 +593,14 @@ DELETE FROM dbo.CGGiftWorkflowGifts WHERE WorkflowId = @WorkflowId;";
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
-    private static async Task InsertGiftAsync(SqlConnection conn, SqlTransaction tx, GiftWorkflowContext ctx, CancellationToken ct)
+    private static async Task<int> InsertGiftAsync(SqlConnection conn, SqlTransaction tx, GiftWorkflowContext ctx, CancellationToken ct)
     {
         const string sql = @"
 INSERT INTO dbo.CGGiftWorkflowGifts
 (WorkflowId, ConstituentId, Amount, Frequency, Installments, PledgeDate, StartDate,
  FundId, CampaignId, AppealId, PackageId, SendReminder, Comments,
  ApiAttemptedAtUtc, ApiSucceeded, ApiGiftId, ApiErrorMessage, CreatedAtUtc)
+OUTPUT INSERTED.Id
 VALUES
 (@WorkflowId, @ConstituentId, @Amount, @Frequency, @Installments, @PledgeDate, @StartDate,
  @FundId, @CampaignId, @AppealId, @PackageId, @SendReminder, @Comments,
@@ -377,7 +633,11 @@ VALUES
 
         cmd.Parameters.Add(new SqlParameter("@CreatedAtUtc", SqlDbType.DateTime2) { Value = DateTime.UtcNow });
 
-        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        var newIdObj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        if (newIdObj is null or DBNull)
+            throw new InvalidOperationException("Unable to obtain new gift row id.");
+
+        return Convert.ToInt32(newIdObj);
     }
 
     private static async Task InsertSponsorshipAsync(SqlConnection conn, SqlTransaction tx, GiftWorkflowContext ctx, CancellationToken ct)
@@ -400,5 +660,149 @@ VALUES
         cmd.Parameters.Add(new SqlParameter("@CreatedAtUtc", SqlDbType.DateTime2) { Value = DateTime.UtcNow });
 
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    private static async Task DeleteDatesSponsoredRowsForWorkflowAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        Guid workflowId,
+        CancellationToken ct)
+    {
+        // Only delete rows that were associated with gift rows belonging to this workflow.
+        // We do this BEFORE deleting CGGiftWorkflowGifts so the join still works.
+        const string sql = @"
+DELETE ds
+FROM dbo.CGDatesSponsored ds
+WHERE ds.GiftRecordId IN (
+    SELECT g.Id
+    FROM dbo.CGGiftWorkflowGifts g
+    WHERE g.WorkflowId = @WorkflowId
+);";
+
+        await using var cmd = new SqlCommand(sql, conn, tx);
+        cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    private static async Task InsertDateSponsoredReservationAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        GiftWorkflowContext ctx,
+        int giftRowId,
+        CancellationToken ct)
+    {
+        // In this app, Gift.CampaignId holds the LOCAL CampaignRecordId (integer as string).
+        if (!int.TryParse((ctx.Gift.CampaignId ?? "").Trim(), out var campaignRecordId) || campaignRecordId <= 0)
+            throw new InvalidOperationException("Unable to determine CampaignRecordId for sponsorship reservation.");
+
+        var sponsoredDate = ctx.Gift.Sponsorship.SponsoredDate!.Value.Date;
+        var slot = (ctx.Gift.Sponsorship.Slot ?? "").Trim();
+        var dayPart = TryParseDayPartFromSlot(slot);
+        if (dayPart is null)
+            throw new InvalidOperationException("Unable to determine sponsorship DayPart from the selected slot.");
+
+        // Lock existing reservations for this campaign/date to prevent race conditions.
+        var existingParts = await ListExistingDayPartsWithLockAsync(conn, tx, campaignRecordId, sponsoredDate, ct).ConfigureAwait(false);
+
+        // Enforce business rules:
+        // - FULL blocks everything
+        // - AM/PM block themselves
+        if (Array.Exists(existingParts, p => string.Equals(p, "FULL", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("That sponsorship date is already booked (FULL).");
+
+        if (string.Equals(dayPart, "FULL", StringComparison.OrdinalIgnoreCase))
+        {
+            if (existingParts.Length > 0)
+                throw new InvalidOperationException("That sponsorship date is already booked.");
+        }
+        else
+        {
+            if (Array.Exists(existingParts, p => string.Equals(p, dayPart, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("That sponsorship date/time is already booked.");
+        }
+
+        var required = ctx.Gift.Sponsorship.ThresholdAmount ?? ctx.Gift.Amount;
+        if (required < 0m) required = 0m;
+
+        const string insertSql = @"
+INSERT INTO dbo.CGDatesSponsored
+(CampaignRecordId, ConstituentRecordId, GiftRecordId, SponsoredDate, DayPart, SponsorTier, RequiredAmount, IsCancelled)
+VALUES
+(@CampaignRecordId, @ConstituentRecordId, @GiftRecordId, @SponsoredDate, @DayPart, @SponsorTier, @RequiredAmount, 0);";
+
+        await using var cmd = new SqlCommand(insertSql, conn, tx);
+        cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignRecordId });
+        cmd.Parameters.Add(new SqlParameter("@ConstituentRecordId", SqlDbType.Int) { Value = ctx.Constituent.ConstituentId });
+        cmd.Parameters.Add(new SqlParameter("@GiftRecordId", SqlDbType.Int) { Value = giftRowId });
+        cmd.Parameters.Add(new SqlParameter("@SponsoredDate", SqlDbType.Date) { Value = sponsoredDate });
+        cmd.Parameters.Add(new SqlParameter("@DayPart", SqlDbType.NVarChar, 4) { Value = dayPart });
+        cmd.Parameters.Add(new SqlParameter("@SponsorTier", SqlDbType.NVarChar, 20) { Value = string.IsNullOrWhiteSpace(slot) ? (object)DBNull.Value : slot });
+        cmd.Parameters.Add(new SqlParameter("@RequiredAmount", SqlDbType.Decimal) { Precision = 18, Scale = 2, Value = required });
+
+        try
+        {
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        catch (SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            // Unique constraint violation (if present) – treat as already booked.
+            throw new InvalidOperationException("That sponsorship date/time is already booked.", ex);
+        }
+    }
+
+    private static async Task<string[]> ListExistingDayPartsWithLockAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        int campaignRecordId,
+        DateTime sponsoredDate,
+        CancellationToken ct)
+    {
+        const string sql = @"
+SELECT DayPart
+FROM dbo.CGDatesSponsored WITH (UPDLOCK, HOLDLOCK)
+WHERE IsCancelled = 0
+  AND CampaignRecordId = @CampaignRecordId
+  AND SponsoredDate = @SponsoredDate;";
+
+        await using var cmd = new SqlCommand(sql, conn, tx);
+        cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = campaignRecordId });
+        cmd.Parameters.Add(new SqlParameter("@SponsoredDate", SqlDbType.Date) { Value = sponsoredDate.Date });
+
+        var list = new List<string>();
+        await using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var s = (r[0] as string ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(s))
+                list.Add(s.ToUpperInvariant());
+        }
+
+        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static string? TryParseDayPartFromSlot(string slot)
+    {
+        var s = (slot ?? "").Trim();
+        if (s.Length == 0) return null;
+
+        if (s.IndexOf("full", StringComparison.OrdinalIgnoreCase) >= 0) return "FULL";
+        if (s.IndexOf("am", StringComparison.OrdinalIgnoreCase) >= 0) return "AM";
+        if (s.IndexOf("pm", StringComparison.OrdinalIgnoreCase) >= 0) return "PM";
+
+        return null;
+    }
+
+    private static async Task<bool> TableExistsAsync(SqlConnection conn, string tableName, CancellationToken ct)
+    {
+        const string sql = @"
+SELECT 1
+FROM sys.tables t
+JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = 'dbo' AND t.name = @Table;";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@Table", SqlDbType.NVarChar, 128) { Value = tableName });
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return obj is not null;
     }
 }

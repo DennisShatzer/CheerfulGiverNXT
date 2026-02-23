@@ -74,7 +74,17 @@ namespace CheerfulGiverNXT
                 return;
             }
 
-            if (e.Key == Key.F || e.SystemKey == Key.F)
+            
+            if (e.Key == Key.T || e.SystemKey == Key.T)
+            {
+                // Ctrl+Shift+T opens Local Transactions (audit)
+                e.Handled = true;
+                var win = new LocalTransactionsWindow { Owner = this };
+                win.ShowDialog();
+                return;
+            }
+
+if (e.Key == Key.F || e.SystemKey == Key.F)
             {
                 // Ctrl+Shift+F opens First-time giver fund exclusions admin
                 e.Handled = true;

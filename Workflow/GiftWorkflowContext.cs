@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -31,6 +32,12 @@ public sealed class GiftWorkflowContext
 
     public WorkflowStatus Status { get; set; } = WorkflowStatus.Draft;
 
+    /// <summary>
+    /// Append-only status/event trail for auditing and retry scenarios.
+    /// This is stored inside ContextJson, so it can evolve without schema changes.
+    /// </summary>
+    public List<WorkflowStatusTrailEntry>? StatusTrail { get; set; }
+
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions.Default);
 
     public static GiftWorkflowContext Start(string? searchText, ConstituentSnapshot snapshot)
@@ -40,6 +47,20 @@ public sealed class GiftWorkflowContext
             SearchText = string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
             Constituent = snapshot
         };
+    }
+
+    public void AddTrail(string @event, string? note = null)
+    {
+        if (string.IsNullOrWhiteSpace(@event))
+            return;
+
+        StatusTrail ??= new List<WorkflowStatusTrailEntry>();
+        StatusTrail.Add(new WorkflowStatusTrailEntry
+        {
+            AtUtc = DateTime.UtcNow,
+            Event = @event.Trim(),
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
+        });
     }
 }
 
@@ -105,6 +126,13 @@ public sealed class ApiResult
     public string? CreateResponseJson { get; set; }
     public string? InstallmentListJson { get; set; }
     public string? InstallmentAddJson { get; set; }
+}
+
+public sealed class WorkflowStatusTrailEntry
+{
+    public DateTime AtUtc { get; set; }
+    public string Event { get; set; } = "";
+    public string? Note { get; set; }
 }
 
 internal static class JsonOptions

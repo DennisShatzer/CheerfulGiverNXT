@@ -1,0 +1,329 @@
+<Window x:Class="CheerfulGiverNXT.LocalTransactionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        mc:Ignorable="d"
+        Title="Admin: Local Transactions"
+        Width="1280"
+        Height="780"
+        MinWidth="980"
+        MinHeight="640"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#FFF7F7F7">
+
+    <Window.Resources>
+
+        <sys:Double x:Key="Font.Base">16</sys:Double>
+        <sys:Double x:Key="Input.Height">34</sys:Double>
+        <Thickness x:Key="Input.Padding">10,6,10,6</Thickness>
+        <CornerRadius x:Key="Corner.Button">6</CornerRadius>
+
+        <Style x:Key="BodyText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}"/>
+
+        <Style x:Key="MutedText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+            <Setter Property="Foreground" Value="#FF555555"/>
+        </Style>
+
+        <Style x:Key="InputTextBox" TargetType="TextBox">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+                <Style x:Key="InputDatePicker" TargetType="{x:Type DatePicker}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="6,0,6,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+                <Style x:Key="InputCombo" TargetType="{x:Type ComboBox}">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="6,0,6,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+        <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource Corner.Button}">
+                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True"
+                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.92"/></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style x:Key="Button.Primary" TargetType="Button">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="140"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FF0078D4"/>
+            <Setter Property="BorderBrush" Value="#FF0078D4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
+
+        <Style x:Key="Button.Secondary" TargetType="Button">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="MinWidth" Value="120"/>
+            <Setter Property="Padding" Value="14,4"/>
+            <Setter Property="Background" Value="#FFF3F3F3"/>
+            <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#FF111111"/>
+            <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
+        </Style>
+
+        <Style x:Key="HeaderCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="SectionCard" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="BorderBrush" Value="#FFE2E2E2"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+                <Style x:Key="FormLabel" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
+            <Setter Property="RowHeight" Value="34"/>
+            <Setter Property="ColumnHeaderHeight" Value="36"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#FFE6E6E6"/>
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="AlternatingRowBackground" Value="#FFF9F9F9"/>
+            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="JsonText" TargetType="TextBox">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="Background" Value="#FFFBFBFB"/>
+            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid Margin="18" HorizontalAlignment="Center" MaxWidth="1500">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderCard}">
+            <StackPanel>
+                <TextBlock Text="Local Transactions (Audit)" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Style="{StaticResource MutedText}" Margin="0,8,0,0">
+                    View locally stored workflow transactions (including SKY API request/response JSON).
+                    <LineBreak/>
+                    Hotkey: <Run FontWeight="SemiBold">Ctrl+Shift+T</Run> (from MainWindow)
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+                <!-- Filters -->
+        <Border Grid.Row="1" Style="{StaticResource SectionCard}" Margin="0,12,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <TextBlock Text="Filters" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock Style="{StaticResource MutedText}"
+                               FontSize="14"
+                               Margin="0,4,0,0"
+                               Text="Search supports: name, constituent id, workflow id, API gift id, user, machine."/>
+                </StackPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="160"/>
+                        <ColumnDefinition Width="160"/>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Labels -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FormLabel}" Text="Search" Margin="0,0,12,4"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource FormLabel}" Text="From (local)" Margin="0,0,12,4"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource FormLabel}" Text="To (local)" Margin="0,0,12,4"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource FormLabel}" Text="Outcome" Margin="0,0,12,4"/>
+                    <TextBlock Grid.Row="0" Grid.Column="4" Style="{StaticResource FormLabel}" Text="Take" Margin="0,0,12,4"/>
+
+                    <!-- Inputs -->
+                    <TextBox x:Name="SearchBox"
+                             Grid.Row="1" Grid.Column="0"
+                             Style="{StaticResource InputTextBox}"
+                             Margin="0,0,12,0"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <DatePicker Grid.Row="1" Grid.Column="1"
+                                Style="{StaticResource InputDatePicker}"
+                                Margin="0,0,12,0"
+                                SelectedDate="{Binding FromDate, Mode=TwoWay}"/>
+
+                    <DatePicker Grid.Row="1" Grid.Column="2"
+                                Style="{StaticResource InputDatePicker}"
+                                Margin="0,0,12,0"
+                                SelectedDate="{Binding ToDate, Mode=TwoWay}"/>
+
+                    <ComboBox Grid.Row="1" Grid.Column="3"
+                              Style="{StaticResource InputCombo}"
+                              Margin="0,0,12,0"
+                              ItemsSource="{Binding OutcomeOptions}"
+                              SelectedItem="{Binding SelectedOutcome, Mode=TwoWay}"/>
+
+                    <TextBox Grid.Row="1" Grid.Column="4"
+                             Style="{StaticResource InputTextBox}"
+                             Margin="0,0,12,0"
+                             TextAlignment="Right"
+                             Text="{Binding TakeText, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Button x:Name="RefreshButton"
+                            Grid.Row="1" Grid.Column="5"
+                            Content="Refresh"
+                            Style="{StaticResource Button.Primary}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Body -->
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.1*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Transactions grid -->
+            <Border Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,12,0">
+                <DataGrid ItemsSource="{Binding Transactions}"
+                          SelectedItem="{Binding SelectedTransaction, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Created (UTC)" Binding="{Binding CreatedUtcText}" Width="160"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120"/>
+                        <DataGridTextColumn Header="Constituent ID" Binding="{Binding ConstituentId}" Width="120"/>
+                        <DataGridTextColumn Header="Name" Binding="{Binding ConstituentName}" Width="*"/>
+                        <DataGridTextColumn Header="Amount" Binding="{Binding AmountText}" Width="110"/>
+                        <DataGridTextColumn Header="Pledge" Binding="{Binding PledgeDateText}" Width="100"/>
+                        <DataGridTextColumn Header="Sponsored" Binding="{Binding SponsoredDateText}" Width="110"/>
+                        <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" Width="70"/>
+                        <DataGridTextColumn Header="API OK" Binding="{Binding ApiSucceededText}" Width="70"/>
+                        <DataGridTextColumn Header="API Gift Id" Binding="{Binding ApiGiftId}" Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <!-- Details -->
+            <Border Grid.Column="1" Style="{StaticResource SectionCard}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Style="{StaticResource MutedText}" Margin="0,0,0,10">
+                        Select a transaction to view stored JSON payloads.
+                    </TextBlock>
+
+                    <TabControl Grid.Row="1">
+                        <TabItem Header="Context">
+                            <TextBox Style="{StaticResource JsonText}" Text="{Binding ContextJson, Mode=OneWay}"/>
+                        </TabItem>
+                        <TabItem Header="API Request">
+                            <TextBox Style="{StaticResource JsonText}" Text="{Binding ApiRequestJson, Mode=OneWay}"/>
+                        </TabItem>
+                        <TabItem Header="API Create Response">
+                            <TextBox Style="{StaticResource JsonText}" Text="{Binding ApiCreateResponseJson, Mode=OneWay}"/>
+                        </TabItem>
+                        <TabItem Header="Installments">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBox Grid.Row="0" Style="{StaticResource JsonText}" Text="{Binding InstallmentListJson, Mode=OneWay}" Margin="0,0,0,8"/>
+                                <TextBox Grid.Row="1" Style="{StaticResource JsonText}" Text="{Binding InstallmentAddJson, Mode=OneWay}"/>
+                            </Grid>
+                        </TabItem>
+                        <TabItem Header="Error">
+                            <TextBox Style="{StaticResource JsonText}" Text="{Binding ApiError, Mode=OneWay}"/>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Border Grid.Row="3" Background="#FFFDFDFD" BorderBrush="#FFE2E2E2" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,10,0,0">
+            <DockPanel>
+                <Button x:Name="CopyWorkflowIdButton" DockPanel.Dock="Right" Content="Copy Workflow Id" Style="{StaticResource Button.Secondary}" Margin="10,0,0,0"/>
+                <Button x:Name="RetrySubmitButton" DockPanel.Dock="Right" Content="Retry Submit to SKY" Style="{StaticResource Button.Primary}" Margin="10,0,0,0" IsEnabled="{Binding CanRetrySelected}"/>
+                <Button x:Name="ExportCsvButton" DockPanel.Dock="Right" Content="Export CSV..." Style="{StaticResource Button.Secondary}" Margin="10,0,0,0"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock VerticalAlignment="Center" Text="{Binding StatusText}"/>
+                    <TextBlock VerticalAlignment="Center" Foreground="#FFB0B0B0" Text="   |   "/>
+                    <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="#FF6B7280" Text="{Binding OutboxStatus.Display}" ToolTip="{Binding OutboxStatus.LastMessage}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+    </Grid>
+</Window>

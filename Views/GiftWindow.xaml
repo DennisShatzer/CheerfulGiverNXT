@@ -45,6 +45,8 @@
         <Style x:Key="InputDatePicker" TargetType="{x:Type DatePicker}">
             <Setter Property="FontSize" Value="{StaticResource Font.Base}"/>
             <Setter Property="Height" Value="{StaticResource Input.Height}"/>
+            <Setter Property="Padding" Value="{StaticResource Input.Padding}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
         <ControlTemplate x:Key="ButtonTemplate.Rounded" TargetType="{x:Type Button}">
@@ -209,6 +211,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Amount -->
@@ -260,23 +263,32 @@
                        Style="{StaticResource LabelText}"
                        Text="Sponsor date:"
                        HorizontalAlignment="Right"
-                       Margin="0,6,8,0"
+                       Margin="0,8,8,0"
                        Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
 
-            <StackPanel Grid.Row="3" Grid.Column="1"
-                        Margin="0,6,0,0"
+            <DatePicker x:Name="SponsorshipDatePicker"
+                        Grid.Row="3" Grid.Column="1"
+                        Style="{StaticResource InputDatePicker}"
+                        Width="200"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0"
+                        SelectedDate="{Binding SponsorshipDate}"
                         Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}">
+                <!-- Make the DatePicker text vertically centered and keep the calendar icon close to the date text. -->
+                <DatePicker.Resources>
+                    <Style TargetType="{x:Type DatePickerTextBox}">
+                        <Setter Property="Padding" Value="10,6,30,6"/>
+                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    </Style>
+                </DatePicker.Resources>
+            </DatePicker>
 
-                <DatePicker x:Name="SponsorshipDatePicker"
-                            Style="{StaticResource InputDatePicker}"
-                            VerticalAlignment="Center"
-                            SelectedDate="{Binding SponsorshipDate}"/>
-
-                <TextBlock Text="{Binding SponsorshipAvailabilityStatus}"
-                           Foreground="Gray"
-                           FontSize="14"
-                           Margin="2,4,0,0"/>
-            </StackPanel>
+            <TextBlock Grid.Row="4" Grid.Column="1"
+                       Text="{Binding SponsorshipAvailabilityStatus}"
+                       Foreground="Gray"
+                       FontSize="14"
+                       Margin="2,4,0,0"
+                       Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
         </Grid>
         <!-- Prior gifts (this campaign) + comments -->
         <StackPanel Grid.Row="2" Margin="0,12,0,0">
@@ -333,10 +345,29 @@
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Save"
-                        Style="{StaticResource Button.Primary}"
                         Margin="8,0,0,0"
-                        Command="{Binding SaveCommand}"
-                        IsEnabled="{Binding CanSave}"/>
+                        Command="{Binding SaveCommand}">
+                    <!-- Save is normally enabled by CanSave (amount validation),
+                         but if sponsorship selection is visible, a date must be chosen. -->
+                    <Button.Style>
+                        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource Button.Primary}">
+                            <Setter Property="IsEnabled">
+                                <Setter.Value>
+                                    <Binding Path="CanSave"/>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding ShowSponsorshipSelector}" Value="True"/>
+                                        <Condition Binding="{Binding SponsorshipDate}" Value="{x:Null}"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
                 <Button Content="Cancel"
                         Style="{StaticResource Button.Secondary}"
                         Margin="8,0,0,0"

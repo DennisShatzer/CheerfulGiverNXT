@@ -69,6 +69,137 @@ namespace CheerfulGiverNXT.Services
 
         public sealed record PledgeInstallment(int Sequence, DateTime Date, decimal Amount);
 
+        // ------------------------------------------------------------
+        // Gift search (best-effort) - used for duplicate detection.
+        // ------------------------------------------------------------
+
+        public sealed record GiftSearchItem(
+            string Id,
+            string? GiftType,
+            DateTime? GiftDate,
+            decimal? Amount
+        );
+
+        /// <summary>
+        /// Best-effort query of gifts for a constituent within a gift_date window.
+        /// The SKY API response shape and supported query params can vary by tenant.
+        /// This method is intentionally tolerant: it returns an empty list if it can't parse.
+        /// </summary>
+        public async Task<IReadOnlyList<GiftSearchItem>> SearchGiftsAsync(
+            string constituentId,
+            DateTime fromGiftDate,
+            DateTime toGiftDate,
+            int limit = 50,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(constituentId))
+                throw new ArgumentNullException(nameof(constituentId));
+
+            var from = fromGiftDate.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var to = toGiftDate.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            // Attempt a few common parameter names used in SKY API collections.
+            // If a tenant doesn't support these params, the call may still succeed but ignore them.
+            // If it fails, callers should treat that as "unknown" and continue.
+            var url =
+                "gft-gifts/v2/gifts" +
+                "?constituent_id=" + Uri.EscapeDataString(constituentId.Trim()) +
+                "&from_gift_date=" + Uri.EscapeDataString(from) +
+                "&to_gift_date=" + Uri.EscapeDataString(to) +
+                "&limit=" + Math.Clamp(limit, 1, 200).ToString(CultureInfo.InvariantCulture);
+
+            using var resp = await SendWithRetryAfterAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, url),
+                ct).ConfigureAwait(false);
+
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException($"HTTP {(int)resp.StatusCode}: {body}");
+
+            return ParseGiftSearch(body);
+        }
+
+        private static IReadOnlyList<GiftSearchItem> ParseGiftSearch(string json)
+        {
+            var list = new List<GiftSearchItem>();
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                JsonElement items;
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    // Common shapes: { value:[...] }, { items:[...] }, { results:[...] }
+                    if (root.TryGetProperty("value", out items) && items.ValueKind == JsonValueKind.Array) { }
+                    else if (root.TryGetProperty("items", out items) && items.ValueKind == JsonValueKind.Array) { }
+                    else if (root.TryGetProperty("results", out items) && items.ValueKind == JsonValueKind.Array) { }
+                    else if (root.TryGetProperty("gifts", out items) && items.ValueKind == JsonValueKind.Array) { }
+                    else return list;
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    items = root;
+                }
+                else
+                {
+                    return list;
+                }
+
+                foreach (var it in items.EnumerateArray())
+                {
+                    if (it.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    var id = TryGetString(it, "id") ?? TryGetString(it, "gift_id");
+                    if (string.IsNullOrWhiteSpace(id))
+                        continue;
+
+                    var giftType = TryGetString(it, "gift_type") ?? TryGetString(it, "type");
+
+                    DateTime? giftDate = null;
+                    var dateStr = TryGetString(it, "gift_date") ?? TryGetString(it, "date");
+                    if (!string.IsNullOrWhiteSpace(dateStr) && DateTime.TryParse(dateStr, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dt))
+                        giftDate = dt.Date;
+
+                    decimal? amount = null;
+                    if (it.TryGetProperty("amount", out var amountEl))
+                    {
+                        // amount may be { value: 123.45 } or a number
+                        if (amountEl.ValueKind == JsonValueKind.Object && amountEl.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.Number)
+                        {
+                            if (v.TryGetDecimal(out var d)) amount = d;
+                        }
+                        else if (amountEl.ValueKind == JsonValueKind.Number)
+                        {
+                            if (amountEl.TryGetDecimal(out var d)) amount = d;
+                        }
+                    }
+
+                    list.Add(new GiftSearchItem(id!, giftType, giftDate, amount));
+                }
+            }
+            catch
+            {
+                // ignore parse errors; return best-effort (possibly empty)
+            }
+
+            return list;
+        }
+
+        private static string? TryGetString(JsonElement obj, string name)
+        {
+            if (obj.ValueKind != JsonValueKind.Object) return null;
+            if (!obj.TryGetProperty(name, out var p)) return null;
+            return p.ValueKind switch
+            {
+                JsonValueKind.String => p.GetString(),
+                JsonValueKind.Number => p.ToString(),
+                _ => null
+            };
+        }
+
         public async Task<CreatePledgeResult> CreatePledgeAsync(CreatePledgeRequest req, CancellationToken ct = default)
         {
             Validate(req);
