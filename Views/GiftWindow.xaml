@@ -272,25 +272,26 @@
                        Style="{StaticResource LabelText}"
                        Text="Sponsor date:"
                        HorizontalAlignment="Right"
-                       Margin="0,8,8,0"
+                       Margin="0,3,8,0"
                        Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}"/>
 
             <DatePicker x:Name="SponsorshipDatePicker"
-                        Grid.Row="3" Grid.Column="1"
-                        Style="{StaticResource InputDatePicker}"
-                        Width="200"
-                        HorizontalAlignment="Left"
-                        Margin="0,8,0,0"
-                        SelectedDate="{Binding SponsorshipDate}"
-                        Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}">
-                <!-- Make the DatePicker text vertically centered and keep the calendar icon close to the date text. -->
-                <DatePicker.Resources>
-                    <Style TargetType="{x:Type DatePickerTextBox}">
-                        <Setter Property="Padding" Value="10,6,30,6"/>
+                         Grid.Row="3" Grid.Column="1"
+                         Style="{StaticResource InputDatePicker}"
+                         Width="200"
+                         HorizontalAlignment="Left"
+                         Margin="0,8,0,0"
+                        SelectedDate="{Binding SponsorshipDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        SelectedDateFormat="Short"
+                         Visibility="{Binding ShowSponsorshipSelector, Converter={StaticResource BoolToVis}}">
+                 <!-- Make the DatePicker text vertically centered and keep the calendar icon close to the date text. -->
+                 <DatePicker.Resources>
+                    <Style TargetType="{x:Type DatePickerTextBox}" BasedOn="{StaticResource InputTextBox}">
+                        <Setter Property="Padding" Value="0,0,0,0"/>
                         <Setter Property="VerticalContentAlignment" Value="Center"/>
                     </Style>
-                </DatePicker.Resources>
-            </DatePicker>
+                 </DatePicker.Resources>
+             </DatePicker>
 
             <TextBlock Grid.Row="4" Grid.Column="1"
                        Text="{Binding SponsorshipAvailabilityStatus}"
@@ -337,9 +338,10 @@
 
             <!-- Comments -->
             <TextBox Style="{StaticResource InputTextBox}"
-                     Height="160"
+                     Height="100"
                      Text="{Binding Comments, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True"
+                     VerticalContentAlignment="Top"
                      VerticalScrollBarVisibility="Auto"
                      ToolTip="Comments (optional)"/>
         </StackPanel>
