@@ -78,7 +78,26 @@ public sealed record GiftHistoryItem(
     string? Slot,
     string? Comments,
     DateTime CreatedAtUtc
-);
+)
+{
+    /// <summary>
+    /// Gift history timestamps are stored in UTC in the local SQL store.
+    /// SQL DateTime values are typically returned with Kind=Unspecified, so we must
+    /// explicitly mark them as UTC before converting to local time for display.
+    /// </summary>
+    public DateTime CreatedAtLocal => DateTime.SpecifyKind(CreatedAtUtc, DateTimeKind.Utc).ToLocalTime();
+
+    /// <summary>
+    /// The pledge date is often stored as a DATE-only value. For display we prefer the
+    /// pledge date if present, otherwise fall back to the locally committed timestamp.
+    /// </summary>
+    public DateTime DisplayDateLocal => (PledgeDate?.Date) ?? CreatedAtLocal.Date;
+
+    /// <summary>
+    /// Time column in gift history should reflect when the pledge was committed.
+    /// </summary>
+    public DateTime DisplayTimeLocal => CreatedAtLocal;
+}
 
 
 public sealed record LocalTransactionQuery(
