@@ -16,6 +16,13 @@ public sealed class CampaignRow
     public string TimeZoneId { get; set; } = "";
     public decimal? GoalAmount { get; set; }
     public int? GoalFirstTimeGivers { get; set; }
+    /// <summary>
+    /// Semicolon-separated fund tokens used to determine first-time giver status.
+    /// If any prior contributed fund matches any token, the donor is NOT a first-time giver.
+    /// </summary>
+    public string FundList { get; set; } = "";
+    public decimal SponsorshipHalfDayAmount { get; set; } = 1000m;
+    public decimal SponsorshipFullDayAmount { get; set; } = 2000m;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -40,7 +47,76 @@ public sealed class SqlCampaignsRepository
         if (!await TableExistsAsync(conn, "CGCampaigns", ct).ConfigureAwait(false))
             return Array.Empty<CampaignRow>();
 
-        const string sql = @"
+        var hasSponsorshipCols = await HasSponsorshipThresholdColumnsAsync(conn, ct).ConfigureAwait(false);
+        var hasFundListCol = await HasFundListColumnAsync(conn, ct).ConfigureAwait(false);
+
+        string sql;
+        if (hasSponsorshipCols && hasFundListCol)
+        {
+            sql = @"
+SELECT
+    CampaignRecordId,
+    CampaignName,
+    StartLocal,
+    EndLocalExclusive,
+    TimeZoneId,
+    GoalAmount,
+    GoalFirstTimeGivers,
+    FundList,
+    SponsorshipHalfDayAmount,
+    SponsorshipFullDayAmount,
+    IsActive,
+    CreatedAt,
+    CreatedBy,
+    UpdatedAt,
+    UpdatedBy
+FROM dbo.CGCampaigns
+ORDER BY StartLocal DESC, CampaignRecordId DESC;";
+        }
+        else if (hasSponsorshipCols)
+        {
+            sql = @"
+SELECT
+    CampaignRecordId,
+    CampaignName,
+    StartLocal,
+    EndLocalExclusive,
+    TimeZoneId,
+    GoalAmount,
+    GoalFirstTimeGivers,
+    SponsorshipHalfDayAmount,
+    SponsorshipFullDayAmount,
+    IsActive,
+    CreatedAt,
+    CreatedBy,
+    UpdatedAt,
+    UpdatedBy
+FROM dbo.CGCampaigns
+ORDER BY StartLocal DESC, CampaignRecordId DESC;";
+        }
+        else if (hasFundListCol)
+        {
+            sql = @"
+SELECT
+    CampaignRecordId,
+    CampaignName,
+    StartLocal,
+    EndLocalExclusive,
+    TimeZoneId,
+    GoalAmount,
+    GoalFirstTimeGivers,
+    FundList,
+    IsActive,
+    CreatedAt,
+    CreatedBy,
+    UpdatedAt,
+    UpdatedBy
+FROM dbo.CGCampaigns
+ORDER BY StartLocal DESC, CampaignRecordId DESC;";
+        }
+        else
+        {
+            sql = @"
 SELECT
     CampaignRecordId,
     CampaignName,
@@ -56,6 +132,7 @@ SELECT
     UpdatedBy
 FROM dbo.CGCampaigns
 ORDER BY StartLocal DESC, CampaignRecordId DESC;";
+        }
 
         await using var cmd = new SqlCommand(sql, conn);
         var list = new List<CampaignRow>();
@@ -63,20 +140,64 @@ ORDER BY StartLocal DESC, CampaignRecordId DESC;";
         await using var rdr = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await rdr.ReadAsync(ct).ConfigureAwait(false))
         {
+            var i = 0;
+            var idxCampaignRecordId = i++;
+            var idxCampaignName = i++;
+            var idxStartLocal = i++;
+            var idxEndLocalExclusive = i++;
+            var idxTimeZoneId = i++;
+            var idxGoalAmount = i++;
+            var idxGoalFirstTimeGivers = i++;
+
+            int? idxFundList = null;
+            if (hasFundListCol)
+                idxFundList = i++;
+
+            int? idxHalfDay = null;
+            int? idxFullDay = null;
+            if (hasSponsorshipCols)
+            {
+                idxHalfDay = i++;
+                idxFullDay = i++;
+            }
+
+            var idxIsActive = i++;
+            var idxCreatedAt = i++;
+            var idxCreatedBy = i++;
+            var idxUpdatedAt = i++;
+            var idxUpdatedBy = i++;
+
+            var half = 1000m;
+            var full = 2000m;
+
+            if (hasSponsorshipCols && idxHalfDay.HasValue && idxFullDay.HasValue)
+            {
+                if (!rdr.IsDBNull(idxHalfDay.Value)) half = rdr.GetDecimal(idxHalfDay.Value);
+                if (!rdr.IsDBNull(idxFullDay.Value)) full = rdr.GetDecimal(idxFullDay.Value);
+                NormalizeThresholds(ref half, ref full);
+            }
+
+            var fundList = "";
+            if (hasFundListCol && idxFundList.HasValue && !rdr.IsDBNull(idxFundList.Value))
+                fundList = (rdr.GetString(idxFundList.Value) ?? "").Trim();
+
             list.Add(new CampaignRow
             {
-                CampaignRecordId = rdr.GetInt32(0),
-                CampaignName = (rdr.IsDBNull(1) ? "" : (rdr.GetString(1) ?? "")).Trim(),
-                StartLocal = rdr.GetDateTime(2),
-                EndLocalExclusive = rdr.GetDateTime(3),
-                TimeZoneId = (rdr.IsDBNull(4) ? "" : (rdr.GetString(4) ?? "")).Trim(),
-                GoalAmount = rdr.IsDBNull(5) ? null : rdr.GetDecimal(5),
-                GoalFirstTimeGivers = rdr.IsDBNull(6) ? null : rdr.GetInt32(6),
-                IsActive = !rdr.IsDBNull(7) && rdr.GetBoolean(7),
-                CreatedAt = rdr.GetDateTime(8),
-                CreatedBy = rdr.IsDBNull(9) ? null : rdr.GetString(9),
-                UpdatedAt = rdr.GetDateTime(10),
-                UpdatedBy = rdr.IsDBNull(11) ? null : rdr.GetString(11)
+                CampaignRecordId = rdr.GetInt32(idxCampaignRecordId),
+                CampaignName = (rdr.IsDBNull(idxCampaignName) ? "" : (rdr.GetString(idxCampaignName) ?? "")).Trim(),
+                StartLocal = rdr.GetDateTime(idxStartLocal),
+                EndLocalExclusive = rdr.GetDateTime(idxEndLocalExclusive),
+                TimeZoneId = (rdr.IsDBNull(idxTimeZoneId) ? "" : (rdr.GetString(idxTimeZoneId) ?? "")).Trim(),
+                GoalAmount = rdr.IsDBNull(idxGoalAmount) ? null : rdr.GetDecimal(idxGoalAmount),
+                GoalFirstTimeGivers = rdr.IsDBNull(idxGoalFirstTimeGivers) ? null : rdr.GetInt32(idxGoalFirstTimeGivers),
+                FundList = fundList,
+                SponsorshipHalfDayAmount = half,
+                SponsorshipFullDayAmount = full,
+                IsActive = !rdr.IsDBNull(idxIsActive) && rdr.GetBoolean(idxIsActive),
+                CreatedAt = rdr.GetDateTime(idxCreatedAt),
+                CreatedBy = rdr.IsDBNull(idxCreatedBy) ? null : rdr.GetString(idxCreatedBy),
+                UpdatedAt = rdr.GetDateTime(idxUpdatedAt),
+                UpdatedBy = rdr.IsDBNull(idxUpdatedBy) ? null : rdr.GetString(idxUpdatedBy)
             });
         }
 
@@ -107,14 +228,97 @@ ORDER BY StartLocal DESC, CampaignRecordId DESC;";
             }
 
             // Upserts
-            const string insSql = @"
+            var hasSponsorshipCols = await HasSponsorshipThresholdColumnsAsync(conn, ct).ConfigureAwait(false);
+            var hasFundListCol = await HasFundListColumnAsync(conn, ct).ConfigureAwait(false);
+
+            string insSql;
+            string updSql;
+
+            if (hasSponsorshipCols && hasFundListCol)
+            {
+                insSql = @"
+INSERT INTO dbo.CGCampaigns
+    (CampaignName, StartLocal, EndLocalExclusive, TimeZoneId, GoalAmount, GoalFirstTimeGivers, FundList, SponsorshipHalfDayAmount, SponsorshipFullDayAmount, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy)
+VALUES
+    (@CampaignName, @StartLocal, @EndLocalExclusive, @TimeZoneId, @GoalAmount, @GoalFirstTimeGivers, @FundList, @SponsorshipHalfDayAmount, @SponsorshipFullDayAmount, @IsActive, SYSUTCDATETIME(), @User, SYSUTCDATETIME(), @User);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+                updSql = @"
+UPDATE dbo.CGCampaigns
+SET
+    CampaignName = @CampaignName,
+    StartLocal = @StartLocal,
+    EndLocalExclusive = @EndLocalExclusive,
+    TimeZoneId = @TimeZoneId,
+    GoalAmount = @GoalAmount,
+    GoalFirstTimeGivers = @GoalFirstTimeGivers,
+    FundList = @FundList,
+    SponsorshipHalfDayAmount = @SponsorshipHalfDayAmount,
+    SponsorshipFullDayAmount = @SponsorshipFullDayAmount,
+    IsActive = @IsActive,
+    UpdatedAt = SYSUTCDATETIME(),
+    UpdatedBy = @User
+WHERE CampaignRecordId = @CampaignRecordId;";
+            }
+            else if (hasSponsorshipCols)
+            {
+                insSql = @"
+INSERT INTO dbo.CGCampaigns
+    (CampaignName, StartLocal, EndLocalExclusive, TimeZoneId, GoalAmount, GoalFirstTimeGivers, SponsorshipHalfDayAmount, SponsorshipFullDayAmount, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy)
+VALUES
+    (@CampaignName, @StartLocal, @EndLocalExclusive, @TimeZoneId, @GoalAmount, @GoalFirstTimeGivers, @SponsorshipHalfDayAmount, @SponsorshipFullDayAmount, @IsActive, SYSUTCDATETIME(), @User, SYSUTCDATETIME(), @User);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+                updSql = @"
+UPDATE dbo.CGCampaigns
+SET
+    CampaignName = @CampaignName,
+    StartLocal = @StartLocal,
+    EndLocalExclusive = @EndLocalExclusive,
+    TimeZoneId = @TimeZoneId,
+    GoalAmount = @GoalAmount,
+    GoalFirstTimeGivers = @GoalFirstTimeGivers,
+    SponsorshipHalfDayAmount = @SponsorshipHalfDayAmount,
+    SponsorshipFullDayAmount = @SponsorshipFullDayAmount,
+    IsActive = @IsActive,
+    UpdatedAt = SYSUTCDATETIME(),
+    UpdatedBy = @User
+WHERE CampaignRecordId = @CampaignRecordId;";
+            }
+            else if (hasFundListCol)
+            {
+                insSql = @"
+INSERT INTO dbo.CGCampaigns
+    (CampaignName, StartLocal, EndLocalExclusive, TimeZoneId, GoalAmount, GoalFirstTimeGivers, FundList, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy)
+VALUES
+    (@CampaignName, @StartLocal, @EndLocalExclusive, @TimeZoneId, @GoalAmount, @GoalFirstTimeGivers, @FundList, @IsActive, SYSUTCDATETIME(), @User, SYSUTCDATETIME(), @User);
+SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+                updSql = @"
+UPDATE dbo.CGCampaigns
+SET
+    CampaignName = @CampaignName,
+    StartLocal = @StartLocal,
+    EndLocalExclusive = @EndLocalExclusive,
+    TimeZoneId = @TimeZoneId,
+    GoalAmount = @GoalAmount,
+    GoalFirstTimeGivers = @GoalFirstTimeGivers,
+    FundList = @FundList,
+    IsActive = @IsActive,
+    UpdatedAt = SYSUTCDATETIME(),
+    UpdatedBy = @User
+WHERE CampaignRecordId = @CampaignRecordId;";
+            }
+            else
+            {
+                insSql = @"
 INSERT INTO dbo.CGCampaigns
     (CampaignName, StartLocal, EndLocalExclusive, TimeZoneId, GoalAmount, GoalFirstTimeGivers, IsActive, CreatedAt, CreatedBy, UpdatedAt, UpdatedBy)
 VALUES
     (@CampaignName, @StartLocal, @EndLocalExclusive, @TimeZoneId, @GoalAmount, @GoalFirstTimeGivers, @IsActive, SYSUTCDATETIME(), @User, SYSUTCDATETIME(), @User);
 SELECT CAST(SCOPE_IDENTITY() AS int);";
 
-            const string updSql = @"
+                updSql = @"
 UPDATE dbo.CGCampaigns
 SET
     CampaignName = @CampaignName,
@@ -127,6 +331,7 @@ SET
     UpdatedAt = SYSUTCDATETIME(),
     UpdatedBy = @User
 WHERE CampaignRecordId = @CampaignRecordId;";
+            }
 
             foreach (var r in rows)
             {
@@ -141,7 +346,7 @@ WHERE CampaignRecordId = @CampaignRecordId;";
                 if (r.CampaignRecordId <= 0)
                 {
                     await using var cmd = new SqlCommand(insSql, conn, tx);
-                    AddParams(cmd, r, name, tz, username, includeId: false);
+                    AddParams(cmd, r, name, tz, username, includeId: false, includeSponsorship: hasSponsorshipCols, includeFundList: hasFundListCol);
                     var newIdObj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
                     if (newIdObj is not null && newIdObj is not DBNull)
                         r.CampaignRecordId = Convert.ToInt32(newIdObj);
@@ -149,7 +354,7 @@ WHERE CampaignRecordId = @CampaignRecordId;";
                 else
                 {
                     await using var cmd = new SqlCommand(updSql, conn, tx);
-                    AddParams(cmd, r, name, tz, username, includeId: true);
+                    AddParams(cmd, r, name, tz, username, includeId: true, includeSponsorship: hasSponsorshipCols, includeFundList: hasFundListCol);
                     await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
             }
@@ -163,7 +368,7 @@ WHERE CampaignRecordId = @CampaignRecordId;";
         }
     }
 
-    private static void AddParams(SqlCommand cmd, CampaignRow r, string name, string tz, string user, bool includeId)
+    private static void AddParams(SqlCommand cmd, CampaignRow r, string name, string tz, string user, bool includeId, bool includeSponsorship, bool includeFundList)
     {
         if (includeId)
             cmd.Parameters.Add(new SqlParameter("@CampaignRecordId", SqlDbType.Int) { Value = r.CampaignRecordId });
@@ -179,8 +384,76 @@ WHERE CampaignRecordId = @CampaignRecordId;";
             Value = (object?)r.GoalAmount ?? DBNull.Value
         });
         cmd.Parameters.Add(new SqlParameter("@GoalFirstTimeGivers", SqlDbType.Int) { Value = (object?)r.GoalFirstTimeGivers ?? DBNull.Value });
+
+        if (includeFundList)
+        {
+            var fundList = (r.FundList ?? "").Trim();
+            cmd.Parameters.Add(new SqlParameter("@FundList", SqlDbType.NVarChar)
+            {
+                Value = fundList
+            });
+        }
+        if (includeSponsorship)
+        {
+            var half = r.SponsorshipHalfDayAmount;
+            var full = r.SponsorshipFullDayAmount;
+            NormalizeThresholds(ref half, ref full);
+
+            cmd.Parameters.Add(new SqlParameter("@SponsorshipHalfDayAmount", SqlDbType.Decimal)
+            {
+                Precision = 18,
+                Scale = 2,
+                Value = half
+            });
+            cmd.Parameters.Add(new SqlParameter("@SponsorshipFullDayAmount", SqlDbType.Decimal)
+            {
+                Precision = 18,
+                Scale = 2,
+                Value = full
+            });
+        }
         cmd.Parameters.Add(new SqlParameter("@IsActive", SqlDbType.Bit) { Value = r.IsActive });
         cmd.Parameters.Add(new SqlParameter("@User", SqlDbType.NVarChar, 200) { Value = (object?)user ?? DBNull.Value });
+    }
+
+
+
+    private static void NormalizeThresholds(ref decimal half, ref decimal full)
+    {
+        const decimal DefaultHalf = 1000m;
+        const decimal DefaultFull = 2000m;
+
+        if (half <= 0m) half = DefaultHalf;
+        if (full <= 0m) full = DefaultFull;
+
+        if (full < half)
+            full = Math.Max(half, DefaultFull);
+    }
+
+    private static async Task<bool> HasSponsorshipThresholdColumnsAsync(SqlConnection conn, CancellationToken ct)
+    {
+        // Safe to call even if the columns don't exist.
+        const string sql = @"
+SELECT
+    CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'SponsorshipHalfDayAmount') IS NOT NULL THEN 1 ELSE 0 END AS HasHalf,
+    CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'SponsorshipFullDayAmount') IS NOT NULL THEN 1 ELSE 0 END AS HasFull;";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        await using var rdr = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await rdr.ReadAsync(ct).ConfigureAwait(false))
+            return false;
+
+        var hasHalf = !rdr.IsDBNull(0) && rdr.GetInt32(0) == 1;
+        var hasFull = !rdr.IsDBNull(1) && rdr.GetInt32(1) == 1;
+        return hasHalf && hasFull;
+    }
+
+    private static async Task<bool> HasFundListColumnAsync(SqlConnection conn, CancellationToken ct)
+    {
+        const string sql = @"SELECT CASE WHEN COL_LENGTH('dbo.CGCampaigns', 'FundList') IS NOT NULL THEN 1 ELSE 0 END;";
+        await using var cmd = new SqlCommand(sql, conn);
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return obj is not null && obj is not DBNull && Convert.ToInt32(obj) == 1;
     }
 
     private static async Task<bool> TableExistsAsync(SqlConnection conn, string tableName, CancellationToken ct)

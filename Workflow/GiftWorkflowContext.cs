@@ -19,6 +19,12 @@ public sealed class GiftWorkflowContext
     /// </summary>
     public bool IsDemo { get; set; }
 
+    /// <summary>
+    /// True if the operator created this constituent via SKY API during this workflow (i.e., it was not found in search).
+    /// Used to treat the donor as a new radio giver without needing historical fund checks.
+    /// </summary>
+    public bool IsNewConstituent { get; set; }
+
     public DateTime StartedAtUtc { get; init; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }
 

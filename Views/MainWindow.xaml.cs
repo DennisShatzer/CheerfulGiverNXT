@@ -19,6 +19,9 @@ namespace CheerfulGiverNXT
 
         private readonly string _baseTitle;
 
+
+        // Tracks a constituent created via AddConstituentWindow so the next workflow can treat them as a new constituent.
+        private int? _lastCreatedConstituentId;
         public MainWindow()
         {
             InitializeComponent();
@@ -193,11 +196,11 @@ namespace CheerfulGiverNXT
                 return;
             }
 
-if (e.Key == Key.F || e.SystemKey == Key.F)
+            if (e.Key == Key.F || e.SystemKey == Key.F)
             {
-                // Ctrl+Shift+F opens First-time giver fund exclusions admin
+                // Ctrl+Shift+F opens Campaigns admin (FundList is now the single source of truth).
                 e.Handled = true;
-                var win = new FirstTimeFundExclusionsWindow { Owner = this };
+                var win = new CampaignsAdminWindow { Owner = this };
                 win.ShowDialog();
                 return;
             }
@@ -223,9 +226,14 @@ if (e.Key == Key.F || e.SystemKey == Key.F)
             if (ok && DataContext is ConstituentLookupViewModel vm)
             {
                 if (win.CreatedConstituentId is int id)
+                {
                     vm.StatusText = $"Created constituent {win.DraftDisplayName} (Constituent ID: {id}).";
+                    _lastCreatedConstituentId = id;
+                }
                 else
+                {
                     vm.StatusText = $"Created constituent {win.DraftDisplayName}.";
+                }
 
                 vm.SearchText = win.DraftDisplayName;
                 if (vm.SearchCommand.CanExecute(null))
@@ -256,7 +264,7 @@ if (e.Key == Key.F || e.SystemKey == Key.F)
             }
         }
 
-        private async void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        private void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (DataContext is not ConstituentLookupViewModel vm) return;
             if (vm.SelectedRow is null) return;
@@ -282,9 +290,11 @@ if (e.Key == Key.F || e.SystemKey == Key.F)
                 // Snapshot the current app mode into the workflow for audit + suppression.
                 workflow.IsDemo = AppModeState.Instance.IsDemo;
 
-                // Existing placeholder call (kept)
-                var funds = await vm.LookupService.GetContributedFundsAsync(vm.SelectedRow.Id, maxGiftsToScan: 500);
-                _ = funds;
+
+                // If this row matches a constituent just created via the Add Constituent dialog, mark it as new for this workflow.
+                workflow.IsNewConstituent = _lastCreatedConstituentId.HasValue && vm.SelectedRow.Id == _lastCreatedConstituentId.Value;
+                if (workflow.IsNewConstituent)
+                    _lastCreatedConstituentId = null;
 
                 var w = new GiftWindow(vm.SelectedRow, workflow) { Owner = this };
                 w.ShowDialog();

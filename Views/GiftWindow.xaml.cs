@@ -2,7 +2,6 @@ using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.ViewModels;
 using CheerfulGiverNXT.Workflow;
 using System;
-using System.Configuration;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -74,7 +73,8 @@ namespace CheerfulGiverNXT
             else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
                      && (e.Key == Key.F || e.SystemKey == Key.F))
             {
-                dialog = new FirstTimeFundExclusionsWindow();
+                // Fund tokens are now configured per-campaign in Campaigns Admin (FundList).
+                dialog = new CampaignsAdminWindow();
             }
             else if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
                      && (e.Key == Key.D || e.SystemKey == Key.D))
@@ -164,52 +164,58 @@ namespace CheerfulGiverNXT
 
             Mouse.OverrideCursor = null;
             Cursor = Cursors.Arrow;
-
             try
             {
-                // Query the donor's contributed funds from RE NXT (via SKY API) once,
-                // then evaluate both:
-                //  - New Radio Constituent (based on RadioFunds tokens)
-                //  - First Time Giver (based on SQL fund exclusions for the active campaign)
+                // Determine:
+                //  - New Radio Giver: new constituent OR existing constituent with no prior gifts to configured campaign FundList
+                //  - First Time Giver: if any prior contributed fund matches ANY token in campaign FundList, they are NOT a first-time giver
+
+                if (_workflow.IsNewConstituent)
+                {
+                    // Debug visibility (requested): show configured FundList and that SKY scan was skipped.
+                    var fundListRaw = await App.FundListRules.GetFundListRawAsync();
+                    // ShowFundListDebugMessage(fundListRaw, Array.Empty<string>(), skyScanNote: "(new constituent - SKY fund scan skipped)");
+
+                    // If the operator just CREATED this constituent (not found in search), they are new by definition.
+                    _isNewRadioConstituent = true;
+                    _isFirstTimeGiver = true;
+                    return;
+                }
+
+                // Existing constituent: query contributed funds once and evaluate both rules.
                 var funds = await App.ConstituentService.GetContributedFundsAsync(_row.Id, maxGiftsToScan: 1000);
 
-                // 1) New Radio Constituent
-                var radioTokens = LoadRadioFundTokens();
-                if (radioTokens.Length == 0)
-                {
-                    _isNewRadioConstituent = false;
-                }
-                else
-                {
-                    var hasRadioFundGift = funds.Any(f => radioTokens.Any(t => TokenMatches(t, f.Name)));
-                    _isNewRadioConstituent = !hasRadioFundGift;
-                }
+                // Debug visibility (requested): show FundList (local SQL) and funds returned by SKY.
+                var fundListRawExisting = await App.FundListRules.GetFundListRawAsync();
+                //ShowFundListDebugMessage(
+                //    fundListRawExisting,
+                //    funds.Select(f => f.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToArray(),
+                //    skyScanNote: null);
 
-                // 2) First Time Giver (respects dbo.CGFirstTimeFundExclusions for the active campaign)
-                var excludedTokens = await App.FirstTimeGiverRules.GetExcludedFundTokensAsync();
-                if (funds.Count == 0)
+                // Single source of truth: per-campaign semicolon-separated tokens in dbo.CGCampaigns.FundList.
+                var tokens = await App.FundListRules.GetFundTokensAsync();
+                if (tokens.Length == 0)
                 {
-                    _isFirstTimeGiver = true;
-                }
-                else if (excludedTokens.Length == 0)
-                {
+                    // If not configured, default to false (safer than incorrectly flagging a donor).
+                    // _isNewRadioConstituent = false;
                     _isFirstTimeGiver = false;
                 }
                 else
                 {
-                    var hasCountedGift = funds.Any(f => !excludedTokens.Any(t => TokenMatches(t, f.Name)));
-                    _isFirstTimeGiver = !hasCountedGift;
+                    var hasAnyMatch = funds.Any(f => tokens.Any(t => TokenMatches(t, f.Name)));
+                    _isFirstTimeGiver = !hasAnyMatch;
+                    //_isNewRadioConstituent = !hasAnyMatch;
                 }
             }
             catch
             {
-                _isNewRadioConstituent = false;
+                //_isNewRadioConstituent = false;
                 _isFirstTimeGiver = false;
             }
             finally
             {
                 // Persist into workflow so local SQL includes it.
-                _workflow.IsNewRadioConstituent = _isNewRadioConstituent;
+                //_workflow.IsNewRadioConstituent = _isNewRadioConstituent;
                 _workflow.IsFirstTimeGiver = _isFirstTimeGiver;
 
                 ApplyBanner();
@@ -227,19 +233,6 @@ namespace CheerfulGiverNXT
                 FirstTimeGiverBanner.Visibility = _isFirstTimeGiver ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private static string[] LoadRadioFundTokens()
-        {
-            var raw = (ConfigurationManager.AppSettings["RadioFunds"] ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
-
-            return raw
-                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => (t ?? "").Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        }
-
         private static bool TokenMatches(string token, string? fundName)
         {
             if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(fundName)) return false;
@@ -253,6 +246,56 @@ namespace CheerfulGiverNXT
 
             return Regex.IsMatch(fundName, pattern, RegexOptions.IgnoreCase);
         }
+
+        //private void ShowFundListDebugMessage(string fundListRaw, string[] skyFundNames, string? skyScanNote)
+        //{
+        //    // Requested diagnostic message box: show campaign FundList (local SQL) and SKY API contributed funds.
+        //    // Keep this resilient: never allow debug UI to break the gift workflow.
+        //    try
+        //    {
+        //        fundListRaw = (fundListRaw ?? "").Trim();
+        //        if (string.IsNullOrWhiteSpace(fundListRaw))
+        //            fundListRaw = "(empty)";
+
+        //        skyFundNames ??= Array.Empty<string>();
+        //        var distinct = skyFundNames
+        //            .Where(s => !string.IsNullOrWhiteSpace(s))
+        //            .Select(s => s.Trim())
+        //            .Distinct(StringComparer.OrdinalIgnoreCase)
+        //            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+        //            .ToList();
+
+        //        const int maxLines = 40;
+        //        var shown = distinct.Take(maxLines).ToList();
+        //        var extra = Math.Max(0, distinct.Count - shown.Count);
+
+        //        var skyBlock = shown.Count == 0
+        //            ? "(none)"
+        //            : string.Join(Environment.NewLine, shown.Select(s => "• " + s));
+
+        //        if (extra > 0)
+        //            skyBlock += Environment.NewLine + $"… (+{extra} more)";
+
+        //        var title = "FundList vs SKY Funds";
+        //        var msg =
+        //            $"Constituent: {_row.FullName} (ID: {_row.Id})\n\n" +
+        //            $"FundList (Local SQL / CGCampaigns.FundList):\n{fundListRaw}\n\n" +
+        //            $"SKY API contributed funds ({distinct.Count}):\n{skyBlock}";
+
+        //        if (!string.IsNullOrWhiteSpace(skyScanNote))
+        //            msg += "\n\n" + skyScanNote;
+
+        //        // Ensure we're on the UI thread.
+        //        if (Dispatcher.CheckAccess())
+        //            MessageBox.Show(this, msg, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        //        else
+        //            Dispatcher.Invoke(() => MessageBox.Show(this, msg, title, MessageBoxButton.OK, MessageBoxImage.Information));
+        //    }
+        //    catch
+        //    {
+        //        // swallow
+        //    }
+        //}
 
 
 

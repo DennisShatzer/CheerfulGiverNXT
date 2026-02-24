@@ -107,6 +107,9 @@
                     <DataGridTextColumn Header="TimeZoneId" Binding="{Binding TimeZoneId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*"/>
                     <DataGridTextColumn Header="Goal $" Binding="{Binding GoalAmount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}}" Width="110"/>
                     <DataGridTextColumn Header="Goal FTG" Binding="{Binding GoalFirstTimeGivers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="110"/>
+                    <DataGridTextColumn Header="Fund List" Binding="{Binding FundList, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220"/>
+                    <DataGridTextColumn Header="Half-day $" Binding="{Binding SponsorshipHalfDayAmount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}}" Width="120"/>
+                    <DataGridTextColumn Header="Full day $" Binding="{Binding SponsorshipFullDayAmount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.00}}" Width="120"/>
                     <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, Mode=TwoWay}" Width="90"/>
                     <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt, StringFormat={}{0:G}}" IsReadOnly="True" Width="1.2*"/>
                     <DataGridTextColumn Header="Updated" Binding="{Binding UpdatedAt, StringFormat={}{0:G}}" IsReadOnly="True" Width="1.2*"/>

@@ -179,7 +179,7 @@
                             Padding="8"
                             Margin="0,0,0,8"
                             Visibility="Collapsed">
-                        <TextBlock Text="NEW RADIO CONSTITUENT (no prior Radio fund gifts found)"
+                        <TextBlock Text="NEW RADIO CONSTITUENT (no prior matching fund gifts found)"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource CG.Brush.Banner.SuccessText}"/>
                     </Border>

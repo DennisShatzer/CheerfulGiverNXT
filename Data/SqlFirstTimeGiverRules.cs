@@ -13,7 +13,7 @@ namespace CheerfulGiverNXT.Data;
 /// for the current campaign.
 ///
 /// Behavior:
-/// - Reads dbo.CGFirstTimeFundExclusions for the active CampaignRecordId.
+/// - Reads dbo.CGFirstTimeGiverFundExclusions (preferred) for the active CampaignRecordId, with a fallback to the legacy dbo.CGFirstTimeFundExclusions schema.
 /// - Returns active FundName values as matching tokens (case-insensitive).
 /// - If the table doesn't exist or no campaign is configured, returns an empty list.
 /// </summary>
@@ -56,12 +56,16 @@ public sealed class SqlFirstTimeGiverRules : IFirstTimeGiverRules
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
-        if (!await TableExistsAsync(conn, "CGFirstTimeFundExclusions", ct).ConfigureAwait(false))
+        var table = await TableExistsAsync(conn, "CGFirstTimeGiverFundExclusions", ct).ConfigureAwait(false)
+            ? "CGFirstTimeGiverFundExclusions"
+            : "CGFirstTimeFundExclusions";
+
+        if (!await TableExistsAsync(conn, table, ct).ConfigureAwait(false))
             return Array.Empty<string>();
 
-        const string sql = @"
+        var sql = $@"
 SELECT FundName
-FROM dbo.CGFirstTimeFundExclusions
+FROM dbo.[{table}]
 WHERE CampaignRecordId = @CampaignRecordId
   AND IsActive = 1
 ORDER BY SortOrder, FundName;";
