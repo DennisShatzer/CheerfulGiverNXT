@@ -17,7 +17,8 @@ namespace CheerfulGiverNXT
     /// <summary>
     /// App startup wiring:
     /// - App.config contains ONLY bootstrap settings (SQL connection string + non-secrets).
-    /// - Subscription key + tokens + OAuth client_secret live in SQL (DPAPI-encrypted via SqlBlackbaudSecretStore).
+    /// - Tokens live in SQL (DPAPI-encrypted via SqlBlackbaudSecretStore).
+    /// - BlackbaudClientId, BlackbaudRedirectUri, BlackbaudScopes, and BlackbaudSubscriptionKey live in App.config (single source of truth).
     /// - One shared HttpClient uses BlackbaudAuthHandler for auto token refresh + subscription key header injection.
     /// </summary>
     public partial class App : Application
@@ -34,6 +35,12 @@ namespace CheerfulGiverNXT
 
         /// <summary>NEW: workflow persistence into SQL Express (same DB as secrets).</summary>
         public static IGiftWorkflowStore GiftWorkflowStore { get; private set; } = null!;
+
+        /// <summary>
+        /// Server-side posting queue.
+        /// Client enqueues SKY gift transactions into dbo.CGSKYTransactions instead of posting gifts directly.
+        /// </summary>
+        public static ISkyTransactionQueue SkyTransactionQueue { get; private set; } = null!;
 
         /// <summary>Current campaign context (CampaignRecordId source of truth).</summary>
         public static ICampaignContext CampaignContext { get; private set; } = null!;
@@ -86,14 +93,24 @@ namespace CheerfulGiverNXT
                     ?? throw new InvalidOperationException("Missing appSetting BlackbaudClientId in App.config.");
 
                 SecretStore = new SqlBlackbaudSecretStore(sqlConnStr);
+// Subscription key is not secret, but it IS required to call SKY API.
+// Single source of truth = App.config.
+var subscriptionKey =
+    ConfigurationManager.AppSettings["BlackbaudSubscriptionKey"]
+    ?? throw new InvalidOperationException("Missing appSetting BlackbaudSubscriptionKey in App.config.");
 
-                // Ensure global secrets exist in SQL (prompt if missing).
-                await EnsureGlobalSubscriptionKeyAsync().ConfigureAwait(true);
-                var clientSecret = await EnsureOAuthClientSecretAsync().ConfigureAwait(true);
+// Optional: confidential client secret (only if your Blackbaud app is configured that way).
+// Single source of truth = App.config.
+var clientSecret = (ConfigurationManager.AppSettings["BlackbaudClientSecret"] ?? "").Trim();
 
-                TokenProvider = new BlackbaudMachineTokenProvider(sqlConnStr, SecretStore, clientId, clientSecret);
+TokenProvider = new BlackbaudMachineTokenProvider(
+    connectionString: sqlConnStr,
+    store: SecretStore,
+    clientId: clientId,
+    subscriptionKey: subscriptionKey,
+    clientSecret: string.IsNullOrWhiteSpace(clientSecret) ? null : clientSecret);
 
-                var handler = new BlackbaudAuthHandler(TokenProvider) { InnerHandler = new HttpClientHandler() };
+var handler = new BlackbaudAuthHandler(TokenProvider) { InnerHandler = new HttpClientHandler() };
 
                 BlackbaudApiHttp = new HttpClient(handler)
                 {
@@ -107,6 +124,9 @@ namespace CheerfulGiverNXT
 
                 // NEW: workflow persistence store
                 GiftWorkflowStore = new SqlGiftWorkflowStore(sqlConnStr);
+
+                // NEW: SKY transaction queue (server-side worker processes these)
+                SkyTransactionQueue = new SqlSkyTransactionQueue(sqlConnStr);
 
                 // NEW: current campaign context
                 CampaignContext = new SqlCampaignContext(sqlConnStr);

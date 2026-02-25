@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>assets\CheerfulGiverSQP_App.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Reuse the same packages as the client for DB/config -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.1" />
+  </ItemGroup>
+
+  <!-- Needed for the embedded PKCE callback host -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!--
+    IMPORTANT (App.config as single source of truth)
+      = On SDK-style .NET (net8.0-windows), App.config is not always copied/renamed
+        into the output folder consistently across machines/tooling.
+      = System.Configuration.ConfigurationManager reads from:
+          $(TargetDir)$(AssemblyName).dll.config
+        at runtime.
+      = To ensure admins see the EXACT values they set in App.config (and avoid
+        stale placeholder values in the output folder), always copy/rename the
+        project App.config to the runtime config filename after every build.
+  -->
+  <Target Name="CopyAppConfigToRuntimeConfig" AfterTargets="Build">
+    <Copy SourceFiles="App.config"
+          DestinationFiles="$(TargetDir)$(AssemblyName).dll.config"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Link shared source files from the client project so tokens + SKY calls behave identically. -->
+  <ItemGroup>
+    <Compile Include="..\Auth\BlackbaudAuthHandler.cs" Link="Auth\BlackbaudAuthHandler.cs" />
+    <Compile Include="..\Auth\BlackbaudMachineTokenProvider.cs" Link="Auth\BlackbaudMachineTokenProvider.cs" />
+    <Compile Include="..\Auth\BlackbaudPkceAuthHttps.cs" Link="Auth\BlackbaudPkceAuthHttps.cs" />
+
+    <Compile Include="..\Data\SqlAppLock.cs" Link="Data\SqlAppLock.cs" />
+    <Compile Include="..\Data\SqlBlackbaudSecretStore.cs" Link="Data\SqlBlackbaudSecretStore.cs" />
+
+    <Compile Include="..\Infrastructure\AppMode\AppModeState.cs" Link="Infrastructure\AppMode\AppModeState.cs" />
+    <Compile Include="..\Infrastructure\RelayCommand.cs" Link="Infrastructure\RelayCommand.cs" />
+
+
+    <Compile Include="..\Services\RenxtGiftServer.cs" Link="Services\RenxtGiftServer.cs" />
+    <Compile Include="..\Services\PledgeScheduleBuilder.cs" Link="Services\PledgeScheduleBuilder.cs" />
+  </ItemGroup>
+
+</Project>

@@ -148,16 +148,12 @@ namespace CheerfulGiverNXT.ViewModels
         /// </summary>
         public async Task RefreshAuthPreviewAsync(CancellationToken ct = default)
         {
-            // Always try to read global subscription key (works even if this PC isn't authorized yet)
-            try
-            {
-                var globalKey = await App.SecretStore.GetGlobalSubscriptionKeyAsync(ct);
-                SubscriptionKey = globalKey is null ? "(not set in SQL)" : Preview(globalKey, 10);
-            }
-            catch
-            {
-                SubscriptionKey = "(error reading SQL)";
-            }
+            // Subscription key is configured in App.config (single source of truth).
+var key = (ConfigurationManager.AppSettings["BlackbaudSubscriptionKey"] ?? "").Trim();
+SubscriptionKey = string.IsNullOrWhiteSpace(key) || key.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase)
+    ? "(not set in App.config)"
+    : Preview(key, 10);
+
 
             // Access token requires machine authorization
             try
@@ -287,18 +283,13 @@ namespace CheerfulGiverNXT.ViewModels
 
         private async Task LoadDebugAuthValuesAsync(CancellationToken ct = default)
         {
-            // Subscription key: read from GLOBAL SQL row (works even if machine auth expires).
-            try
-            {
-                var globalKey = await App.SecretStore.GetGlobalSubscriptionKeyAsync(ct);
-                SubscriptionKey = globalKey is null ? "(not set in SQL)" : Preview(globalKey, 10);
-            }
-            catch
-            {
-                SubscriptionKey = "(error reading SQL)";
-            }
+            // Subscription key: read from GLOBAL SQL row (works even if machine auth expires).// Subscription key is configured in App.config (single source of truth).
+var key = (ConfigurationManager.AppSettings["BlackbaudSubscriptionKey"] ?? "").Trim();
+SubscriptionKey = string.IsNullOrWhiteSpace(key) || key.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase)
+    ? "(not set in App.config)"
+    : Preview(key, 10);
 
-            // Access token: requires machine authorization (refreshes automatically if needed).
+// Access token: requires machine authorization (refreshes automatically if needed).
             var (token, _) = await _tokenProvider.GetAsync(ct);
             IsAuthorized = true;
 

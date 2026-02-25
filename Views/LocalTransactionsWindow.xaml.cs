@@ -16,7 +16,7 @@ public partial class LocalTransactionsWindow : Window
     public LocalTransactionsWindow()
     {
         InitializeComponent();
-        DataContext = new LocalTransactionsViewModel(App.GiftWorkflowStore, App.GiftService, App.GiftMatchService);
+        DataContext = new LocalTransactionsViewModel(App.GiftWorkflowStore, App.GiftService, App.GiftMatchService, App.SkyTransactionQueue);
 
         Loaded += async (_, __) =>
         {

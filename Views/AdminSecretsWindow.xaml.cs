@@ -1,5 +1,6 @@
 using CheerfulGiverNXT.ViewModels;
 using System;
+using System.Configuration;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,7 @@ namespace CheerfulGiverNXT
             {
                 WireShowHideHandlers();
                 WireButtons();
+                LockDownAppConfigBlackbaudKeys();
                 await SafeRefreshAsync();
                 UpdateSaveButtonsState();
             };
@@ -28,11 +30,8 @@ namespace CheerfulGiverNXT
 
         private void WireButtons()
         {
-            SaveSubscriptionKeyButton.Click += async (_, __) => await SaveSubscriptionKeyAsync();
-            ClearSubscriptionKeyButton.Click += async (_, __) => await ClearSecretAsync("subscription");
-
-            SaveClientSecretButton.Click += async (_, __) => await SaveClientSecretAsync();
-            ClearClientSecretButton.Click += async (_, __) => await ClearSecretAsync("client_secret");
+            // Subscription key + client secret are configured in App.config (single source of truth).
+            // The UI for those fields is read-only.
 
             ClearMachineTokensButton.Click += async (_, __) => await ClearMachineTokensAsync();
             AuthorizeNowButton.Click += async (_, __) => await AuthorizeThisPcAsync();
@@ -236,5 +235,32 @@ private async Task SaveSubscriptionKeyAsync()
             await SafeRefreshAsync();
                 UpdateSaveButtonsState();
         }
+private void LockDownAppConfigBlackbaudKeys()
+{
+    // Single source of truth for these values is App.config.
+    // We present them as read-only so admins know exactly what is configured,
+    // but changes must be made by editing App.config.
+
+    var subKey = (ConfigurationManager.AppSettings["BlackbaudSubscriptionKey"] ?? string.Empty).Trim();
+    SubscriptionKeyPasswordBox.Password = subKey;
+    SubscriptionKeyTextBox.Text = subKey;
+
+    SubscriptionKeyPasswordBox.IsEnabled = false;
+    SubscriptionKeyTextBox.IsEnabled = false;
+    ShowSubscriptionKeyCheckBox.Visibility = Visibility.Collapsed;
+    SaveSubscriptionKeyButton.Visibility = Visibility.Collapsed;
+    ClearSubscriptionKeyButton.Visibility = Visibility.Collapsed;
+
+    var clientSecret = (ConfigurationManager.AppSettings["BlackbaudClientSecret"] ?? string.Empty).Trim();
+    ClientSecretPasswordBox.Password = clientSecret;
+    ClientSecretTextBox.Text = clientSecret;
+
+    ClientSecretPasswordBox.IsEnabled = false;
+    ClientSecretTextBox.IsEnabled = false;
+    ShowClientSecretCheckBox.Visibility = Visibility.Collapsed;
+    SaveClientSecretButton.Visibility = Visibility.Collapsed;
+    ClearClientSecretButton.Visibility = Visibility.Collapsed;
+}
+
     }
 }

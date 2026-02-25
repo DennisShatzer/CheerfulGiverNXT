@@ -1,0 +1,8 @@
+<Application x:Class="CheerfulGiverSQP.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <!-- Keep resources minimal for v1. We can theme later if desired. -->
+    </Application.Resources>
+</Application>

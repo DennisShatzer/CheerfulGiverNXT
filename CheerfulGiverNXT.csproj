@@ -38,4 +38,18 @@
     </None>
   </ItemGroup>
 
+  <!--
+    IMPORTANT (App.config as single source of truth)
+      = System.Configuration.ConfigurationManager reads from:
+          $(TargetDir)$(AssemblyName).dll.config
+        at runtime.
+      = Ensure the project's App.config is always copied/renamed into the output
+        folder so the running app uses the same values you edit in the project.
+  -->
+  <Target Name="CopyAppConfigToRuntimeConfig" AfterTargets="Build">
+    <Copy SourceFiles="App.config"
+          DestinationFiles="$(TargetDir)$(AssemblyName).dll.config"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

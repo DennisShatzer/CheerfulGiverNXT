@@ -1,0 +1,179 @@
+<Window x:Class="CheerfulGiverSQP.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CheerfulGiverSQP = SKY Queue Processor"
+        Height="760" Width="1180"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header / controls -->
+        <DockPanel Grid.Row="0" LastChildFill="false">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                <TextBlock Text="CheerfulGiverSQP" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="  =  SKY Queue Processor" FontSize="16" Opacity="0.65" VerticalAlignment="Center" Margin="8,2,0,0" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="14,6" Margin="0,0,8,0" />
+                <Button Content="Start" Command="{Binding StartCommand}" Padding="14,6" Margin="0,0,8,0" IsEnabled="{Binding CanStart}" />
+                <Button Content="Stop" Command="{Binding StopCommand}" Padding="14,6" Margin="0,0,8,0" IsEnabled="{Binding CanStop}" />
+                <Button Content="Secrets" Command="{Binding OpenSecretsCommand}" Padding="14,6" Margin="0,0,8,0" />
+                <Button Content="Exit" Command="{Binding ExitCommand}" Padding="14,6" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Status / counts -->
+        <Border Grid.Row="1" BorderBrush="#22000000" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,12,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Vertical" Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Status:" FontWeight="SemiBold" />
+                        <TextBlock Text=" " />
+                        <TextBlock Text="{Binding StatusLine}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="Pending:" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding PendingCount}" Margin="6,0,14,0" />
+                        <TextBlock Text="Processing:" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ProcessingCount}" Margin="6,0,14,0" />
+                        <TextBlock Text="Succeeded:" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SucceededCount}" Margin="6,0,14,0" />
+                        <TextBlock Text="Failed:" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding FailedCount}" Margin="6,0,14,0" />
+                    </StackPanel>
+
+                    <!-- Health badges (configuration + authorization + posting) -->
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Border Background="{Binding ConfigBadgeBrush}" CornerRadius="12" Padding="10,4" Margin="0,0,8,0" ToolTip="{Binding ConfigBadgeToolTip}">
+                            <TextBlock Text="{Binding ConfigBadgeText}" Foreground="White" FontWeight="SemiBold" />
+                        </Border>
+
+                        <Border Background="{Binding AuthorizationBadgeBrush}" CornerRadius="12" Padding="10,4" Margin="0,0,8,0" ToolTip="{Binding AuthorizationBadgeToolTip}">
+                            <TextBlock Text="{Binding AuthorizationBadgeText}" Foreground="White" FontWeight="SemiBold" />
+                        </Border>
+
+                        <Border Background="{Binding PostingBadgeBrush}" CornerRadius="12" Padding="10,4" ToolTip="{Binding PostingBadgeToolTip}">
+                            <TextBlock Text="{Binding PostingBadgeText}" Foreground="White" FontWeight="SemiBold" />
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center">
+                    <CheckBox Content="Start minimized" IsChecked="{Binding StartMinimized}" Margin="0,0,16,0" />
+                    <CheckBox Content="Minimize to tray" IsChecked="{Binding MinimizeToTray}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main area -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.4*" />
+                <ColumnDefinition Width="1.6*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" BorderBrush="#22000000" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,10,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" LastChildFill="false" Margin="0,0,0,8">
+                        <TextBlock Text="Recent Transactions" FontWeight="SemiBold" FontSize="14" DockPanel.Dock="Left" />
+                        <ComboBox Width="170" SelectedValue="{Binding StatusFilter}" SelectedValuePath="Tag" DockPanel.Dock="Right">
+                            <ComboBoxItem Content="All" Tag="" />
+                            <ComboBoxItem Content="Pending" Tag="Pending" />
+                            <ComboBoxItem Content="Processing" Tag="Processing" />
+                            <ComboBoxItem Content="Succeeded" Tag="Succeeded" />
+                            <ComboBoxItem Content="Failed" Tag="Failed" />
+                        </ComboBox>
+                    </DockPanel>
+
+                    <DataGrid Grid.Row="1"
+                              ItemsSource="{Binding RecentTransactions}"
+                              SelectedItem="{Binding SelectedTransaction}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Id" Binding="{Binding SkyTransactionRecordId}" Width="70" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding TransactionStatus}" Width="110" />
+                            <DataGridTextColumn Header="Type" Binding="{Binding TransactionType}" Width="120" />
+                            <DataGridTextColumn Header="Constituent" Binding="{Binding ConstituentId}" Width="110" />
+                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount}" Width="90" />
+                            <DataGridTextColumn Header="Pledge Date" Binding="{Binding PledgeDate}" Width="110" />
+                            <DataGridTextColumn Header="Fund" Binding="{Binding FundId}" Width="110" />
+                            <DataGridTextColumn Header="Enqueued (Local)" Binding="{Binding EnqueuedAtLocal}" Width="170" />
+                            <DataGridTextColumn Header="Attempts" Binding="{Binding ProcessingAttemptCount}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" BorderBrush="#22000000" BorderThickness="1" CornerRadius="8" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Details" FontWeight="SemiBold" FontSize="14" />
+
+                    <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0,8,0,8">
+                        <TextBlock Text="{Binding SelectedSummary}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding SelectedStatusNote}" TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding SelectedLastError}" TextWrapping="Wrap" Opacity="0.8" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <GroupBox Grid.Row="2" Header="Request JSON" Padding="8">
+                        <!-- TextBox.Text defaults to TwoWay; SelectedRequestJson is a computed (read-only) property.
+                             Force OneWay to prevent WPF from attempting to write back to the viewmodel. -->
+                        <TextBox Text="{Binding SelectedRequestJson, Mode=OneWay}"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </GroupBox>
+
+                    <DockPanel Grid.Row="3" Margin="0,10,0,8" LastChildFill="false">
+                        <TextBlock Text="Log" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Button Content="Clear" Command="{Binding ClearLogCommand}" DockPanel.Dock="Right" Padding="10,4" />
+                    </DockPanel>
+
+                    <Border Grid.Row="4" BorderBrush="#22000000" BorderThickness="1" CornerRadius="6" Padding="6">
+                        <!-- LogText is also computed/read-only; force OneWay to avoid TwoWay binding errors. -->
+                        <TextBox Text="{Binding LogText, Mode=OneWay}"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 IsReadOnly="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <TextBlock Grid.Row="3" Text="Tip: close the window to keep running in the tray. Use the tray menu to Exit." Opacity="0.6" Margin="4,10,0,0" />
+    </Grid>
+</Window>

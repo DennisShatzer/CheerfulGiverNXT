@@ -73,6 +73,9 @@ namespace CheerfulGiverNXT.ViewModels
         private readonly RenxtConstituentLookupService.ConstituentGridRow _row;
         private readonly RenxtGiftServer _gifts;
 
+        // NEW: server-side SKY transaction queue (client no longer posts gifts directly)
+        private readonly ISkyTransactionQueue _skyQueue;
+
         // NEW: workflow source of truth + SQL store
         private readonly GiftWorkflowContext _workflow;
         private readonly IGiftWorkflowStore _workflowStore;
@@ -823,7 +826,8 @@ WHERE CampaignRecordId = @Id;";
             RenxtGiftServer giftServer,
             IGiftWorkflowStore workflowStore,
             ICampaignContext campaignContext,
-            IGiftMatchService giftMatchService)
+            IGiftMatchService giftMatchService,
+            ISkyTransactionQueue skyTransactionQueue)
         {
             _row = row ?? throw new ArgumentNullException(nameof(row));
             _workflow = workflow ?? throw new ArgumentNullException(nameof(workflow));
@@ -831,6 +835,7 @@ WHERE CampaignRecordId = @Id;";
             _workflowStore = workflowStore ?? throw new ArgumentNullException(nameof(workflowStore));
             _campaignContext = campaignContext ?? throw new ArgumentNullException(nameof(campaignContext));
             _giftMatch = giftMatchService ?? throw new ArgumentNullException(nameof(giftMatchService));
+            _skyQueue = skyTransactionQueue ?? throw new ArgumentNullException(nameof(skyTransactionQueue));
 
             // Default to One-time.
             _selectedPreset = FrequencyPresets[0];
@@ -1138,7 +1143,7 @@ WHERE CampaignRecordId = @Id;";
             _workflow.Status = WorkflowStatus.ReadyToSubmit;
 
             IsBusy = true;
-            StatusText = "Creating pledge...";
+            StatusText = "Preparing pledge...";
 
             try
             {
@@ -1167,61 +1172,63 @@ WHERE CampaignRecordId = @Id;";
                     AddInstallmentsIfMissing: true
                 );
 
-                _workflow.Api.RequestJson = JsonSerializer.Serialize(req);
+                var requestJson = JsonSerializer.Serialize(req);
+                _workflow.Api.RequestJson = requestJson;
 
-                // HARD GUARD: in Demo mode (or when posting is disabled by config), never post to SKY API.
-                if (!SkyPostingPolicy.IsPostingAllowed(out var blockReason))
+                // IMPORTANT:
+                // Client no longer posts gifts directly to SKY API.
+                // Instead, we enqueue the JSON request into dbo.CGSKYTransactions for a server-side worker.
+
+                // Demo mode must never enqueue server-side transactions.
+                if (AppModeState.Instance.IsDemo)
                 {
                     _workflow.IsDemo = true;
+
                     _workflow.Api.Attempted = false;
                     _workflow.Api.AttemptedAtUtc = null;
                     _workflow.Api.Success = false;
                     _workflow.Api.GiftId = null;
-                    _workflow.Api.ErrorMessage = blockReason;
-                    _workflow.AddTrail("SkyPostSuppressed", blockReason);
+                    _workflow.Api.CreateResponseJson = null;
+                    _workflow.Api.InstallmentListJson = null;
+                    _workflow.Api.InstallmentAddJson = null;
+                    _workflow.Api.ErrorMessage = "Demo mode enabled. Not queued for server submission.";
+
+                    _workflow.AddTrail("SkyQueueSuppressed", _workflow.Api.ErrorMessage);
                     _workflow.Status = WorkflowStatus.ReadyToSubmit;
 
-                    StatusText = AppModeState.Instance.IsDemo
-                        ? "Saved (Demo). Not sent to SKY API."
-                        : ("Saved locally. " + (blockReason ?? "SKY API posting is disabled."));
+                    StatusText = "Saved (Demo). Not queued for server.";
 
                     RequestClose?.Invoke(this, EventArgs.Empty);
                     return;
                 }
 
-                _workflow.Api.Attempted = true;
-                _workflow.Api.AttemptedAtUtc = DateTime.UtcNow;
+                StatusText = "Queueing pledge for server submission...";
 
-                var result = await _gifts.CreatePledgeAsync(req);
+                var queueId = await _skyQueue.EnqueueOrUpdatePendingPledgeCreateAsync(
+                    workflowId: _workflow.WorkflowId,
+                    constituentId: ConstituentId,
+                    amount: amount,
+                    pledgeDate: PledgeDate.Value,
+                    fundId: FundIdText.Trim(),
+                    comments: req.Comments,
+                    requestJson: requestJson,
+                    clientMachineName: _workflow.MachineName,
+                    clientWindowsUser: _workflow.WindowsUser);
 
-                _workflow.Api.Success = true;
-                _workflow.Api.GiftId = result.GiftId;
-                _workflow.Api.CreateResponseJson = result.RawCreateResponseJson;
-                _workflow.Api.InstallmentListJson = result.RawInstallmentListJson;
-                _workflow.Api.InstallmentAddJson = result.RawInstallmentAddJson;
+                // Reset API result fields: server worker will handle SKY submission.
+                _workflow.Api.Attempted = false;
+                _workflow.Api.AttemptedAtUtc = null;
+                _workflow.Api.Success = false;
+                _workflow.Api.GiftId = null;
+                _workflow.Api.CreateResponseJson = null;
+                _workflow.Api.InstallmentListJson = null;
+                _workflow.Api.InstallmentAddJson = null;
+                _workflow.Api.ErrorMessage = null;
 
-                _workflow.Status = WorkflowStatus.ApiSucceeded;
+                _workflow.Status = WorkflowStatus.ReadyToSubmit;
+                _workflow.AddTrail("SkyTransactionQueued", $"CGSKYTransactions.SkyTransactionRecordId={queueId}");
 
-                // Apply matching gifts (best-effort). Failures here should not undo the original pledge.
-                try
-                {
-                    StatusText = "Applying matching gifts...";
-                    var match = await _giftMatch.ApplyMatchesForGiftAsync(_workflow).ConfigureAwait(true);
-
-                    if (match.TotalMatched > 0m)
-                        StatusText = $"Saved pledge! Gift ID: {result.GiftId} (Matched {match.TotalMatched:C})";
-                    else
-                        StatusText = $"Saved pledge! Gift ID: {result.GiftId}";
-
-                    if (match.Warnings.Length > 0)
-                        StatusText += $" (Match note: {match.Warnings[0]})";
-                }
-                catch (Exception mex)
-                {
-                    StatusText = $"Saved pledge! Gift ID: {result.GiftId} (Match error: {mex.Message})";
-                    TryAppendErrorLog(mex);
-                }
-
+                StatusText = $"Saved pledge (queued for server). Queue Id: {queueId}";
                 RequestClose?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)

@@ -110,18 +110,22 @@ namespace CheerfulGiverNXT.ViewModels
 
         public async Task RefreshAsync(CancellationToken ct = default)
         {
-            // Read status without decrypting (professional + safe for UI)
-            var global = await ReadRowStatusAsync("__GLOBAL__", ct);
-            var clientSecret = await ReadRowStatusAsync("__OAUTH_CLIENT_SECRET__", ct);
-            var machine = await ReadRowStatusAsync(MachineKey, ct);
+            // Blackbaud SKY IDs/keys are configured in App.config (single source of truth).
+            var subKey = (ConfigurationManager.AppSettings["BlackbaudSubscriptionKey"] ?? "").Trim();
+            HasGlobalSubscription = !string.IsNullOrWhiteSpace(subKey)
+                && !subKey.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase);
 
-            HasGlobalSubscription = global.SubLen > 0;
-            GlobalSubscriptionStatusText = HasGlobalSubscription ? "Stored" : "Not stored";
-            GlobalSubscriptionUpdatedAtText = FormatUtc(global.UpdatedAtUtc);
+            GlobalSubscriptionStatusText = HasGlobalSubscription ? "Configured in App.config" : "Missing in App.config";
+            GlobalSubscriptionUpdatedAtText = "n/a";
 
-            HasClientSecret = clientSecret.SubLen > 0;
-            ClientSecretStatusText = HasClientSecret ? "Stored" : "Not stored";
-            ClientSecretUpdatedAtText = FormatUtc(clientSecret.UpdatedAtUtc);
+            var clientSecret = (ConfigurationManager.AppSettings["BlackbaudClientSecret"] ?? "").Trim();
+            HasClientSecret = !string.IsNullOrWhiteSpace(clientSecret);
+
+            ClientSecretStatusText = HasClientSecret ? "Configured in App.config" : "Not configured";
+            ClientSecretUpdatedAtText = "n/a";
+
+            // Tokens remain stored per-machine in SQL (DPAPI LocalMachine).
+            var machine = await ReadRowStatusAsync(MachineKey, ct).ConfigureAwait(false);
 
             HasMachineTokens = machine.RefreshLen > 0;
             MachineTokenStatusText = HasMachineTokens ? "Authorized" : "Not authorized";
@@ -131,26 +135,26 @@ namespace CheerfulGiverNXT.ViewModels
 
         public async Task SaveSubscriptionKeyAsync(string subscriptionKey, CancellationToken ct = default)
         {
-            await App.SecretStore.SetGlobalSubscriptionKeyAsync(subscriptionKey, ct).ConfigureAwait(false);
-            await RefreshAsync(ct).ConfigureAwait(false);
+            await Task.CompletedTask.ConfigureAwait(false);
+            throw new InvalidOperationException("Subscription key is configured in App.config (BlackbaudSubscriptionKey). Edit App.config to change it.");
         }
 
         public async Task SaveClientSecretAsync(string clientSecret, CancellationToken ct = default)
         {
-            await App.SecretStore.SetOAuthClientSecretAsync(clientSecret, ct).ConfigureAwait(false);
-            await RefreshAsync(ct).ConfigureAwait(false);
+            await Task.CompletedTask.ConfigureAwait(false);
+            throw new InvalidOperationException("Client secret is configured in App.config (BlackbaudClientSecret). Edit App.config to change it.");
         }
 
         public async Task ClearSubscriptionKeyAsync(CancellationToken ct = default)
         {
-            await DeleteRowAsync("__GLOBAL__", ct).ConfigureAwait(false);
-            await RefreshAsync(ct).ConfigureAwait(false);
+            await Task.CompletedTask.ConfigureAwait(false);
+            throw new InvalidOperationException("Subscription key is configured in App.config (BlackbaudSubscriptionKey). Edit App.config to clear it.");
         }
 
         public async Task ClearClientSecretAsync(CancellationToken ct = default)
         {
-            await DeleteRowAsync("__OAUTH_CLIENT_SECRET__", ct).ConfigureAwait(false);
-            await RefreshAsync(ct).ConfigureAwait(false);
+            await Task.CompletedTask.ConfigureAwait(false);
+            throw new InvalidOperationException("Client secret is configured in App.config (BlackbaudClientSecret). Edit App.config to clear it.");
         }
 
         public async Task ClearMachineTokensAsync(CancellationToken ct = default)
