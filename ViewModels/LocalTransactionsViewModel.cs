@@ -22,13 +22,15 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
     private readonly IGiftWorkflowStore _store;
     private readonly RenxtGiftServer _gifts;
     private readonly IGiftMatchService _giftMatch;
+    private readonly ISkyTransactionQueue _skyQueue;
     private CancellationTokenSource? _detailCts;
 
-    public LocalTransactionsViewModel(IGiftWorkflowStore store, RenxtGiftServer gifts, IGiftMatchService giftMatch)
+    public LocalTransactionsViewModel(IGiftWorkflowStore store, RenxtGiftServer gifts, IGiftMatchService giftMatch, ISkyTransactionQueue skyQueue)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _gifts = gifts ?? throw new ArgumentNullException(nameof(gifts));
         _giftMatch = giftMatch ?? throw new ArgumentNullException(nameof(giftMatch));
+        _skyQueue = skyQueue ?? throw new ArgumentNullException(nameof(skyQueue));
 
         OutcomeOptions = new ObservableCollection<string>
         {
@@ -475,59 +477,39 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             var user = Environment.UserName;
             var machine = Environment.MachineName;
 
-            ctx.AddTrail("RetryRequested", $"Requested by {user} on {machine}.");
+            ctx.AddTrail("QueueRequested", $"Requested by {user} on {machine}.");
 
             // Preserve prior error in the trail before overwriting.
             if (!string.IsNullOrWhiteSpace(ctx.Api.ErrorMessage))
                 ctx.AddTrail("PriorApiError", ctx.Api.ErrorMessage);
 
-            ctx.Api.Attempted = true;
-            ctx.Api.AttemptedAtUtc = DateTime.UtcNow;
+            StatusText = "Queueing transaction for server submission...";
+
+            // Enqueue into dbo.CGSKYTransactions (server-side worker will post to SKY API).
+            var queueId = await _skyQueue.EnqueueOrUpdatePendingPledgeCreateAsync(
+                workflowId: ctx.WorkflowId,
+                constituentId: ctx.Constituent.ConstituentId,
+                amount: req.Amount,
+                pledgeDate: req.PledgeDate,
+                fundId: req.FundId,
+                comments: req.Comments,
+                requestJson: ctx.Api.RequestJson!,
+                clientMachineName: machine,
+                clientWindowsUser: user,
+                ct: ct);
+
+            // Reset API result fields: server worker owns submission.
+            ctx.Api.Attempted = false;
+            ctx.Api.AttemptedAtUtc = null;
+            ctx.Api.Success = false;
+            ctx.Api.GiftId = null;
+            ctx.Api.CreateResponseJson = null;
+            ctx.Api.InstallmentListJson = null;
+            ctx.Api.InstallmentAddJson = null;
             ctx.Api.ErrorMessage = null;
 
-            StatusText = "Retrying submit to SKY API...";
-            ctx.AddTrail("RetryApiAttempted", $"AttemptedAtUtc={ctx.Api.AttemptedAtUtc:O}");
-
-            try
-            {
-                var result = await _gifts.CreatePledgeAsync(req, ct);
-
-                ctx.Api.Success = true;
-                ctx.Api.GiftId = result.GiftId;
-                ctx.Api.CreateResponseJson = result.RawCreateResponseJson;
-                ctx.Api.InstallmentListJson = result.RawInstallmentListJson;
-                ctx.Api.InstallmentAddJson = result.RawInstallmentAddJson;
-
-                ctx.Status = WorkflowStatus.ApiSucceeded;
-                ctx.AddTrail("RetryApiSucceeded", $"GiftId={result.GiftId}");
-
-                // Apply matching gifts (best-effort). This is local-only.
-                try
-                {
-                    var match = await _giftMatch.ApplyMatchesForGiftAsync(ctx, ct);
-                    if (match.TotalMatched > 0m)
-                        ctx.AddTrail("RetryMatchApplied", $"TotalMatched={match.TotalMatched:0.00}");
-                    if (match.Warnings.Length > 0)
-                        ctx.AddTrail("RetryMatchWarning", match.Warnings[0]);
-                }
-                catch (Exception mex)
-                {
-                    ctx.AddTrail("RetryMatchError", mex.Message);
-                    try { _ = ErrorLogger.Log(mex, "LocalTransactionsViewModel.RetrySelectedAsync.Match"); } catch { }
-                }
-            }
-            catch (Exception ex)
-            {
-                ctx.Api.Success = false;
-                ctx.Api.GiftId = null;
-                ctx.Api.CreateResponseJson = null;
-                ctx.Api.InstallmentListJson = null;
-                ctx.Api.InstallmentAddJson = null;
-                ctx.Api.ErrorMessage = ex.Message;
-                ctx.Status = WorkflowStatus.ApiFailed;
-                ctx.AddTrail("RetryApiFailed", ex.Message);
-                try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.RetrySelectedAsync.Api"); } catch { }
-            }
+            ctx.Status = WorkflowStatus.ReadyToSubmit;
+            ctx.AddTrail("SkyTransactionQueued", $"CGSKYTransactions.SkyTransactionRecordId={queueId}");
 
             // Re-commit locally (updates gifts row + sponsorship reservation association).
             ctx.CompletedAtUtc = DateTime.UtcNow;
@@ -555,9 +537,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             await RefreshAsync(ct);
             SelectedTransaction = Transactions.FirstOrDefault(t => t.WorkflowId == workflowId);
 
-            StatusText = ctx.Api.Success && !string.IsNullOrWhiteSpace(ctx.Api.GiftId)
-                ? $"Retry succeeded. API Gift Id: {ctx.Api.GiftId}"
-                : "Retry completed (API did not succeed).";
+            StatusText = "Queued for server submission.";
         }
         finally
         {

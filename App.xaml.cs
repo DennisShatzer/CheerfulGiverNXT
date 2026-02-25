@@ -35,6 +35,12 @@ namespace CheerfulGiverNXT
         /// <summary>NEW: workflow persistence into SQL Express (same DB as secrets).</summary>
         public static IGiftWorkflowStore GiftWorkflowStore { get; private set; } = null!;
 
+        /// <summary>
+        /// Server-side posting queue.
+        /// Client enqueues SKY gift transactions into dbo.CGSKYTransactions instead of posting gifts directly.
+        /// </summary>
+        public static ISkyTransactionQueue SkyTransactionQueue { get; private set; } = null!;
+
         /// <summary>Current campaign context (CampaignRecordId source of truth).</summary>
         public static ICampaignContext CampaignContext { get; private set; } = null!;
 
@@ -107,6 +113,9 @@ namespace CheerfulGiverNXT
 
                 // NEW: workflow persistence store
                 GiftWorkflowStore = new SqlGiftWorkflowStore(sqlConnStr);
+
+                // NEW: SKY transaction queue (server-side worker processes these)
+                SkyTransactionQueue = new SqlSkyTransactionQueue(sqlConnStr);
 
                 // NEW: current campaign context
                 CampaignContext = new SqlCampaignContext(sqlConnStr);
