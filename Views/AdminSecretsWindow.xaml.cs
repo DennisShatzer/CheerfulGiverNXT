@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CheerfulGiverNXT.Infrastructure.Ui;
 
 namespace CheerfulGiverNXT
 {
@@ -195,7 +196,7 @@ private async Task SaveSubscriptionKeyAsync()
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Unable to load status:\n\n" + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                UiError.Show(ex, title: "Error", context: "AdminSecretsWindow.SafeRefreshAsync", message: "Unable to load status.", owner: this);
             }
         }
 

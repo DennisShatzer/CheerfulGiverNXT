@@ -198,7 +198,33 @@ public sealed class OutboxQueueProcessor : IDisposable
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         // NOTE: schema check happens elsewhere (app already uses these tables).
-        const string sql = @"
+        // However, newer builds add an optional soft-delete column (IsDeleted) which older databases may not have.
+        // We must keep this query tolerant.
+        var hasIsDeleted = false;
+        try
+        {
+            const string colSql = "SELECT COL_LENGTH('dbo.CGGiftWorkflowGifts', 'IsDeleted');";
+            await using var colCmd = new SqlCommand(colSql, conn);
+            var v = await colCmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            hasIsDeleted = v is not null && v is not DBNull;
+        }
+        catch
+        {
+            // If we can't detect, fall back to legacy behavior.
+            hasIsDeleted = false;
+        }
+
+        var sql = hasIsDeleted
+            ? @"
+SELECT TOP (@Take)
+    w.WorkflowId
+FROM dbo.CGGiftWorkflows w
+INNER JOIN dbo.CGGiftWorkflowGifts g ON g.WorkflowId = w.WorkflowId
+WHERE g.ApiAttemptedAtUtc IS NOT NULL
+  AND g.ApiSucceeded = 0
+  AND (g.IsDeleted = 0 OR g.IsDeleted IS NULL)
+ORDER BY g.ApiAttemptedAtUtc ASC, w.CreatedAtUtc ASC;"
+            : @"
 SELECT TOP (@Take)
     w.WorkflowId
 FROM dbo.CGGiftWorkflows w
@@ -347,6 +373,7 @@ ORDER BY g.ApiAttemptedAtUtc ASC, w.CreatedAtUtc ASC;";
         {
             // Best-effort: allow retry if duplicate check is unavailable.
             ctx.AddTrail("OutboxDuplicateCheckUnavailable", ex.Message);
+            try { _ = ErrorLogger.Log(ex, "OutboxQueueProcessor.DuplicateCheck"); } catch { /* ignore */ }
         }
 
         try

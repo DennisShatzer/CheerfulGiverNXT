@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using CheerfulGiverNXT.Infrastructure.Ui;
 
 namespace CheerfulGiverNXT;
 
@@ -66,6 +67,36 @@ public partial class LocalTransactionsWindow : Window
             });
         };
 
+        DeleteButton.Click += async (_, __) =>
+        {
+            if (!Vm.CanDeleteSelected || Vm.SelectedTransaction is null)
+                return;
+
+            var t = Vm.SelectedTransaction;
+            var hasSkyGift = !string.IsNullOrWhiteSpace(t.ApiGiftId);
+            var isRetrySkyOnly = t.IsDeleted == true && hasSkyGift;
+
+            var prompt =
+                (isRetrySkyOnly
+                    ? "This pledge is already marked as DELETED locally.\n\nThis will RE-ATTEMPT deleting the gift in Blackbaud SKY API.\n\n"
+                    : "This will mark the selected pledge as DELETED in your local SQL database.\n\n")
+                + (hasSkyGift
+                    ? $"SKY Gift Id: {t.ApiGiftId}\nThis action will attempt to delete this gift in SKY API.\n\n"
+                    : "No SKY Gift Id is present. Only the local record will be marked deleted.\n\n")
+                + $"WorkflowId: {t.WorkflowId}\nConstituent: {t.ConstituentId} = {t.ConstituentName}\nAmount: {t.AmountText}\n\nContinue?";
+
+            var result = MessageBox.Show(
+                prompt,
+                "Delete Pledge",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            await RunBusyAsync(() => Vm.DeleteSelectedAsync());
+        };
+
         RetrySubmitButton.Click += async (_, __) =>
         {
             if (!Vm.CanRetrySelected)
@@ -123,7 +154,7 @@ public partial class LocalTransactionsWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            UiError.Show(ex, title: "Error", context: "LocalTransactionsWindow.xaml.RunBusyAsync", owner: this);
         }
         finally
         {

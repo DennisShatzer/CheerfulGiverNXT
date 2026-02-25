@@ -298,6 +298,35 @@ namespace CheerfulGiverNXT.Services
             );
         }
 
+        /// <summary>
+        /// Deletes a gift by id using the Gift API (v1).
+        ///
+        /// Endpoint is documented as DELETE /gifts/{id} under the Gift API, and the service base in SKY is /gift/v1.
+        /// In other words: DELETE https://api.sky.blackbaud.com/gift/v1/gifts/{id}
+        ///
+        /// NOTE: Deletion is subject to SKY rules (some gifts cannot be deleted).
+        /// </summary>
+        public async Task DeleteGiftAsync(string giftId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(giftId))
+                throw new ArgumentNullException(nameof(giftId));
+
+            // HARD GUARD: never allow write operations when Demo mode is enabled or posting is disabled by policy.
+            if (!SkyPostingPolicy.IsPostingAllowed(out var reason))
+                throw new InvalidOperationException("SKY API gift deletion is disabled. " + (reason ?? string.Empty));
+
+            var url = "gift/v1/gifts/" + Uri.EscapeDataString(giftId.Trim());
+
+            using var resp = await SendWithRetryAfterAsync(
+                () => new HttpRequestMessage(HttpMethod.Delete, url),
+                ct).ConfigureAwait(false);
+
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException($"HTTP {(int)resp.StatusCode}: {body}");
+        }
+
         public async Task<string> GetInstallmentsRawAsync(string giftId, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(giftId)) throw new ArgumentNullException(nameof(giftId));

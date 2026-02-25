@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using CheerfulGiverNXT.Infrastructure.Ui;
 
 namespace CheerfulGiverNXT
 {
@@ -127,11 +128,7 @@ namespace CheerfulGiverNXT
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    "Unable to create the constituent:\n\n" + ex.Message,
-                    "Create failed",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                UiError.Show(ex, title: "Create failed", context: "AddConstituentWindow.Save_Click", message: "Unable to create the constituent.", owner: this);
             }
             finally
             {

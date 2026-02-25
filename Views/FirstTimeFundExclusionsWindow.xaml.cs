@@ -5,6 +5,7 @@ using System.Configuration;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using CheerfulGiverNXT.Infrastructure.Ui;
 
 namespace CheerfulGiverNXT;
 
@@ -52,7 +53,7 @@ public partial class FirstTimeFundExclusionsWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            UiError.Show(ex, title: "Error", context: "FirstTimeFundExclusionsWindow.xaml.RunBusyAsync", owner: this);
         }
         finally
         {

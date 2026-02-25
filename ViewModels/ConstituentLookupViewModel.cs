@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using CheerfulGiverNXT.Infrastructure.Ui;
 
 using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Infrastructure;
@@ -188,12 +189,8 @@ namespace CheerfulGiverNXT.ViewModels
                 var redirectUri = BlackbaudConfig.RedirectUri;
 
                 // IMPORTANT: if Blackbaud does not return a refresh_token, this machine will NOT be seeded.
-                // Allow configuring scopes in App.config, defaulting to rnxt.r + offline_access.
-                var scope = ConfigurationManager.AppSettings["BlackbaudScopes"];
-                if (string.IsNullOrWhiteSpace(scope))
-                    scope = "rnxt.r offline_access";
-
-                await _tokenProvider.SeedThisMachineAsync(redirectUri, scope);
+                // Scopes are configured in App.config (BlackbaudScopes). Do not hard-code them in code.
+                await _tokenProvider.SeedThisMachineAsync(redirectUri, BlackbaudConfig.Scopes);
 
                 // Load + show current values (for the debug expander)
                 await RefreshAuthPreviewAsync();
@@ -268,12 +265,12 @@ namespace CheerfulGiverNXT.ViewModels
             catch (InvalidOperationException ex)
             {
                 StatusText = ex.Message;
-                MessageBox.Show(ex.Message, "Not Authorized", MessageBoxButton.OK, MessageBoxImage.Warning);
+                UiError.Show(ex, title: "Not Authorized", context: "ConstituentLookupViewModel.SearchAsync", icon: MessageBoxImage.Warning);
             }
             catch (Exception ex)
             {
                 StatusText = "Error: " + ex.Message;
-                MessageBox.Show("Error during search:\n" + ex, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                UiError.Show(ex, title: "Error", context: "ConstituentLookupViewModel.SearchAsync", message: "Error during search.", owner: null);
             }
             finally
             {

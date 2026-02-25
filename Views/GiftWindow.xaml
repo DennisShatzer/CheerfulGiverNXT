@@ -179,7 +179,7 @@
                             Padding="8"
                             Margin="0,0,0,8"
                             Visibility="Collapsed">
-                        <TextBlock Text="NEW RADIO CONSTITUENT (no prior matching fund gifts found)"
+                        <TextBlock Text="NEW RADIO GIVER"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource CG.Brush.Banner.SuccessText}"/>
                     </Border>
@@ -194,15 +194,26 @@
                             Padding="8"
                             Margin="0,0,0,8"
                             Visibility="Collapsed">
-                        <TextBlock Text="FIRST TIME GIVER (no prior counted gifts found)"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource CG.Brush.Banner.InfoText}"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Segoe Fluent Icons: Certificate (EB95) -->
+                            <TextBlock FontFamily="Segoe Fluent Icons"
+                                       Text="&#xEB95;"
+                                       FontSize="18"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource CG.Brush.Banner.InfoText}" />
+
+                            <TextBlock Text="FIRST TIME GIVER"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource CG.Brush.Banner.InfoText}"/>
+                        </StackPanel>
                     </Border>
 
-<TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
-                    <TextBlock Text="{Binding ConstituentSummary}"
-                               Margin="0,4,0,0"
-                               TextWrapping="Wrap"/>
+                    <TextBlock FontWeight="SemiBold" Text="{Binding FullName}" />
+                                        <TextBlock Text="{Binding ConstituentSummary}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
@@ -307,7 +318,7 @@
                       Margin="0,0,0,12"
                       Header="{Binding ExistingCampaignGiftsHeader}">
                 <StackPanel>
-                    <DataGrid ItemsSource="{Binding ExistingCampaignGifts}"
+                    <DataGrid ItemsSource="{Binding ExistingCampaignGifts}" RowHeight="32" ColumnHeaderHeight="34"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
                               CanUserDeleteRows="False"
@@ -318,12 +329,26 @@
                               GridLinesVisibility="Horizontal"
                               FontSize="{StaticResource Font.Base}"
                               Height="190" Background="{DynamicResource CG.Brush.Surface}" Foreground="{DynamicResource CG.Brush.TextPrimary}" BorderBrush="{DynamicResource CG.Brush.Border}">
+                        <DataGrid.Resources>
+                            <!-- Consistent spacing so the history grid doesn't feel cramped -->
+                            <Style TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                <!-- Slightly more left padding gives the row data some breathing room -->
+                                <Setter Property="Padding" Value="14,4,10,4"/>
+                                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                            </Style>
+
+                            <Style TargetType="{x:Type DataGridColumnHeader}" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                <Setter Property="Padding" Value="10,6,10,6"/>
+                            </Style>
+                        </DataGrid.Resources>
+
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Pledge date" Binding="{Binding PledgeDate, StringFormat=d}" Width="115"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding DisplayDateLocal, StringFormat=d}" Width="105"/>
+                            <DataGridTextColumn Header="Time" Binding="{Binding DisplayTimeLocal, StringFormat=t}" Width="85"/>
                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=C}" Width="95"/>
                             <DataGridTextColumn Header="Frequency" Binding="{Binding Frequency}" Width="110"/>
-                            <DataGridTextColumn Header="# Inst." Binding="{Binding Installments}" Width="70"/>
-                            <DataGridTextColumn Header="Gift ID" Binding="{Binding ApiGiftId}" Width="140"/>
+                            <DataGridTextColumn Visibility="Collapsed" Header="# Inst." Binding="{Binding Installments}" Width="70"/>
+                            <DataGridTextColumn Visibility="Collapsed" Header="Gift ID" Binding="{Binding ApiGiftId}" Width="140"/>
                             <DataGridTextColumn Header="Sponsor date" Binding="{Binding SponsoredDate, StringFormat=d}" Width="120"/>
                             <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" Width="*"/>
                         </DataGrid.Columns>

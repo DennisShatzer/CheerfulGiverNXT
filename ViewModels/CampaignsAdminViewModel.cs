@@ -3,10 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.ViewModels;
 
@@ -66,6 +68,7 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusText = "Error: " + ex.Message;
+            try { _ = ErrorLogger.Log(ex, "CampaignsAdminViewModel"); } catch { }
         }
         finally
         {
@@ -90,6 +93,7 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
             GoalAmount = null,
             GoalFirstTimeGivers = null,
             FundList = "",
+            AnonymousGiverId = null,
             IsActive = false,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -121,11 +125,47 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
                 r.CampaignName = (r.CampaignName ?? "").Trim();
                 r.TimeZoneId = (r.TimeZoneId ?? "").Trim();
                 r.FundList = (r.FundList ?? "").Trim();
+
+                // AnonymousGiverId is optional. Treat <= 0 as NULL.
+                if (r.AnonymousGiverId.HasValue && r.AnonymousGiverId.Value <= 0)
+                    r.AnonymousGiverId = null;
+
                 NormalizeSponsorshipThresholds(r);
                 return r;
             })
             .Where(r => !string.IsNullOrWhiteSpace(r.CampaignName))
             .ToArray();
+
+        // Workflow improvement:
+        // dbo.CGCampaigns is the single source of truth, and the rest of the app prefers a single "active" row.
+        // If an operator marks multiple campaigns Active, keep only ONE active on save:
+        //   - Prefer the currently selected row (if it is active)
+        //   - Otherwise, keep the most recent campaign (by CampaignRecordId, then StartLocal)
+        var active = normalized.Where(r => r.IsActive).ToList();
+        if (active.Count > 1)
+        {
+            CampaignRow? keep = null;
+
+            if (SelectedRow is not null && SelectedRow.IsActive)
+            {
+                // Try to locate the same instance in the normalized set.
+                keep = normalized.FirstOrDefault(r => ReferenceEquals(r, SelectedRow))
+                       ?? normalized.FirstOrDefault(r => r.CampaignRecordId > 0 && r.CampaignRecordId == SelectedRow.CampaignRecordId);
+            }
+
+            keep ??= active
+                .OrderByDescending(r => r.CampaignRecordId)
+                .ThenByDescending(r => r.StartLocal)
+                .FirstOrDefault();
+
+            foreach (var r in active)
+            {
+                if (!ReferenceEquals(r, keep))
+                    r.IsActive = false;
+            }
+
+            StatusText = "Note: Multiple Active campaigns were selected. Only one will remain Active after saving.";
+        }
 
         IsBusy = true;
         try
@@ -142,8 +182,6 @@ public sealed class CampaignsAdminViewModel : INotifyPropertyChanged
             IsBusy = false;
         }
     }
-
-
 
     private static void NormalizeSponsorshipThresholds(CampaignRow r)
     {

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.Services
 {
@@ -102,14 +103,14 @@ namespace CheerfulGiverNXT.Services
             if (!string.IsNullOrWhiteSpace(email))
             {
                 try { await CreateEmailAsync(newId, email!.Trim(), ct); }
-                catch (Exception ex) { warnings.Add("Email: " + ex.Message); }
+                catch (Exception ex) { warnings.Add("Email: " + ex.Message); try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreateEmail"); } catch { } }
             }
 
             var normalizedPhone = NormalizePhone(phone);
             if (!string.IsNullOrWhiteSpace(normalizedPhone))
             {
                 try { await CreatePhoneAsync(newId, normalizedPhone!, "Home", ct); }
-                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); }
+                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreatePhone"); } catch { } }
             }
 
             if (!string.IsNullOrWhiteSpace(addressLine1) || !string.IsNullOrWhiteSpace(addressLine2))
@@ -132,6 +133,7 @@ namespace CheerfulGiverNXT.Services
                 }
                 catch (Exception ex)
                 {
+                    try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreateAddress"); } catch { }
                     warnings.Add("Address: " + ex.Message);
                 }
             }
@@ -185,7 +187,7 @@ namespace CheerfulGiverNXT.Services
             if (!string.IsNullOrWhiteSpace(email))
             {
                 try { await CreateEmailAsync(newId, email!.Trim(), ct); }
-                catch (Exception ex) { warnings.Add("Email: " + ex.Message); }
+                catch (Exception ex) { warnings.Add("Email: " + ex.Message); try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreateEmail"); } catch { } }
             }
 
             var normalizedPhone = NormalizePhone(phone);
@@ -194,7 +196,7 @@ namespace CheerfulGiverNXT.Services
                 // "Work" and "Business" are common defaults for orgs; if your instance uses different table values,
                 // the call may fail and you'll see a warning (but the organization will still be created).
                 try { await CreatePhoneAsync(newId, normalizedPhone!, "Work", ct); }
-                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); }
+                catch (Exception ex) { warnings.Add("Phone: " + ex.Message); try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreatePhone"); } catch { } }
             }
 
             if (!string.IsNullOrWhiteSpace(addressLine1) || !string.IsNullOrWhiteSpace(addressLine2))
@@ -217,6 +219,7 @@ namespace CheerfulGiverNXT.Services
                 }
                 catch (Exception ex)
                 {
+                    try { _ = ErrorLogger.Log(ex, "RenxtConstituentLookupService.CreateAddress"); } catch { }
                     warnings.Add("Address: " + ex.Message);
                 }
             }

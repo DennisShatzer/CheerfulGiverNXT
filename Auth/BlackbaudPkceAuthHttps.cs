@@ -268,6 +268,7 @@ if (!redir.IsLoopback)
             sb.Append("&state=").Append(Uri.EscapeDataString(state));
             sb.Append("&code_challenge_method=S256");
             sb.Append("&code_challenge=").Append(Uri.EscapeDataString(codeChallenge));
+            sb.Append("&prompt=consent"); // Force consent screen to ensure refresh token is issued
             return sb.ToString();
         }
 

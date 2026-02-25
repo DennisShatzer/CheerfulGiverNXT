@@ -13,6 +13,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.ViewModels;
 
@@ -64,6 +65,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             _selectedTransaction = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanRetrySelected));
+            OnPropertyChanged(nameof(CanDeleteSelected));
             _ = LoadSelectedDetailsAsync();
         }
     }
@@ -72,6 +74,25 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
         !IsBusy
         && SelectedTransaction is not null
         && SelectedTransaction.ApiSucceeded != true;
+
+    public bool CanDeleteSelected
+    {
+        get
+        {
+            if (IsBusy || SelectedTransaction is null)
+                return false;
+
+            // First-time delete: always allowed.
+            if (SelectedTransaction.IsDeleted != true)
+                return true;
+
+            // Already deleted locally: allow re-attempt only if SKY deletion hasn't succeeded and there is a gift id.
+            if (string.IsNullOrWhiteSpace(SelectedTransaction.ApiGiftId))
+                return false;
+
+            return SelectedTransaction.ApiDeleteSucceeded != true;
+        }
+    }
 
     private string _searchText = "";
     public string SearchText
@@ -112,7 +133,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
     public bool IsBusy
     {
         get => _isBusy;
-        private set { _isBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotBusy)); OnPropertyChanged(nameof(CanRetrySelected)); }
+        private set { _isBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotBusy)); OnPropertyChanged(nameof(CanRetrySelected)); OnPropertyChanged(nameof(CanDeleteSelected)); }
     }
 
     public bool IsNotBusy => !IsBusy;
@@ -249,7 +270,15 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
                     MachineName = it.MachineName,
                     WindowsUser = it.WindowsUser,
                     IsFirstTimeGiver = it.IsFirstTimeGiver,
-                    IsNewRadioConstituent = it.IsNewRadioConstituent
+                    IsNewRadioConstituent = it.IsNewRadioConstituent,
+
+                    IsDeleted = it.IsDeleted,
+                    DeletedAtUtc = it.DeletedAtUtc,
+                    DeletedByUser = it.DeletedByUser ?? "",
+
+                    ApiDeleteAttemptedAtUtc = it.ApiDeleteAttemptedAtUtc,
+                    ApiDeleteSucceeded = it.ApiDeleteSucceeded,
+                    ApiDeleteErrorMessage = it.ApiDeleteErrorMessage ?? ""
                 });
             }
 
@@ -258,6 +287,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusText = "Error: " + ex.Message;
+            try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.RefreshAsync"); } catch { }
         }
         finally
         {
@@ -335,6 +365,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.CheckSkyDuplicatesForSelectedAsync"); } catch { }
             // Do not block retry if the check cannot run.
             return new SkyDuplicateCheckResult(false, null, ex.Message);
         }
@@ -357,7 +388,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("CreatedUtc,Status,ConstituentId,Name,Amount,Frequency,PledgeDate,SponsoredDate,Slot,ApiOk,ApiGiftId,Machine,User,FirstTimeGiver,NewRadioConstituent,ApiError");
+        sb.AppendLine("CreatedUtc,Status,ConstituentId,Name,Amount,Frequency,PledgeDate,SponsoredDate,Slot,ApiOk,ApiGiftId,Machine,User,FirstTimeGiver,NewRadioConstituent,Deleted,DeletedAtUtc,DeletedByUser,SkyDeleteOk,SkyDeleteAttemptedAtUtc,SkyDeleteError,ApiError");
 
         foreach (var r in rows)
         {
@@ -378,6 +409,12 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             sb.Append(Esc(r.WindowsUser)).Append(',');
             sb.Append(Esc(r.IsFirstTimeGiver?.ToString() ?? "")).Append(',');
             sb.Append(Esc(r.IsNewRadioConstituent?.ToString() ?? "")).Append(',');
+            sb.Append(Esc(r.IsDeleted?.ToString() ?? "")).Append(',');
+            sb.Append(Esc(r.DeletedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "")).Append(',');
+            sb.Append(Esc(r.DeletedByUser)).Append(',');
+            sb.Append(Esc(r.ApiDeleteSucceeded?.ToString() ?? "")).Append(',');
+            sb.Append(Esc(r.ApiDeleteAttemptedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "")).Append(',');
+            sb.Append(Esc(r.ApiDeleteErrorMessage)).Append(',');
             sb.Append(Esc(r.ApiErrorMessage));
             sb.AppendLine();
         }
@@ -476,6 +513,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
                 catch (Exception mex)
                 {
                     ctx.AddTrail("RetryMatchError", mex.Message);
+                    try { _ = ErrorLogger.Log(mex, "LocalTransactionsViewModel.RetrySelectedAsync.Match"); } catch { }
                 }
             }
             catch (Exception ex)
@@ -488,6 +526,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
                 ctx.Api.ErrorMessage = ex.Message;
                 ctx.Status = WorkflowStatus.ApiFailed;
                 ctx.AddTrail("RetryApiFailed", ex.Message);
+                try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.RetrySelectedAsync.Api"); } catch { }
             }
 
             // Re-commit locally (updates gifts row + sponsorship reservation association).
@@ -504,6 +543,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             catch (Exception ex)
             {
                 ctx.AddTrail("RetryLocalCommitFailed", ex.Message);
+                try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.RetrySelectedAsync.LocalCommit"); } catch { }
 
                 // Best-effort: if the child save failed, still try to update the workflow ContextJson.
                 try { await _store.SaveWorkflowOnlyAsync(ctx, ct); } catch { /* ignore */ }
@@ -518,6 +558,68 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
             StatusText = ctx.Api.Success && !string.IsNullOrWhiteSpace(ctx.Api.GiftId)
                 ? $"Retry succeeded. API Gift Id: {ctx.Api.GiftId}"
                 : "Retry completed (API did not succeed).";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Admin-only operation: soft-delete the selected pledge locally and attempt to delete it in SKY API.
+    /// Always records an audit snapshot in dbo.CGDeletedPledges.
+    /// </summary>
+    public async Task DeleteSelectedAsync(CancellationToken ct = default)
+    {
+        if (!CanDeleteSelected || SelectedTransaction is null)
+            return;
+
+        var workflowId = SelectedTransaction.WorkflowId;
+        var apiGiftId = (SelectedTransaction.ApiGiftId ?? string.Empty).Trim();
+
+        IsBusy = true;
+        try
+        {
+            var deletedAtUtc = DateTime.UtcNow;
+            var mark = new DeletedPledgeMark(
+                DeletedAtUtc: deletedAtUtc,
+                DeletedByMachine: Environment.MachineName,
+                DeletedByUser: Environment.UserName,
+                Reason: "Deleted via LocalTransactions"
+            );
+
+            StatusText = "Marking local record as deleted...";
+            await _store.MarkWorkflowGiftDeletedLocalAsync(workflowId, mark, ct);
+
+            if (string.IsNullOrWhiteSpace(apiGiftId))
+            {
+                await RefreshAsync(ct);
+                SelectedTransaction = Transactions.FirstOrDefault(t => t.WorkflowId == workflowId);
+                StatusText = "Deleted locally (no SKY Gift Id present).";
+                return;
+            }
+
+            var attemptAtUtc = DateTime.UtcNow;
+            try
+            {
+                StatusText = "Deleting gift in SKY API...";
+                await _gifts.DeleteGiftAsync(apiGiftId, ct);
+
+                await _store.UpdateWorkflowGiftSkyDeleteAsync(workflowId, new SkyDeleteResult(attemptAtUtc, true, null), ct);
+
+                await RefreshAsync(ct);
+                SelectedTransaction = Transactions.FirstOrDefault(t => t.WorkflowId == workflowId);
+                StatusText = $"Deleted locally and in SKY API. Gift Id: {apiGiftId}";
+            }
+            catch (Exception ex)
+            {
+                await _store.UpdateWorkflowGiftSkyDeleteAsync(workflowId, new SkyDeleteResult(attemptAtUtc, false, ex.Message), ct);
+
+                await RefreshAsync(ct);
+                SelectedTransaction = Transactions.FirstOrDefault(t => t.WorkflowId == workflowId);
+                StatusText = "Deleted locally, but SKY delete failed: " + ex.Message;
+                try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.DeleteSelectedAsync.SkyDelete"); } catch { }
+            }
         }
         finally
         {
@@ -578,6 +680,7 @@ public sealed class LocalTransactionsViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             ApiError = "Error loading details: " + ex.Message;
+            try { _ = ErrorLogger.Log(ex, "LocalTransactionsViewModel.LoadSelectedDetailsAsync"); } catch { }
         }
     }
 
@@ -639,11 +742,26 @@ public sealed class LocalTransactionRow
     public bool? IsFirstTimeGiver { get; set; }
     public bool? IsNewRadioConstituent { get; set; }
 
+    // Soft-delete fields (LocalTransactions admin)
+    public bool? IsDeleted { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
+    public string DeletedByUser { get; set; } = "";
+
+    // SKY delete audit (best-effort)
+    public DateTime? ApiDeleteAttemptedAtUtc { get; set; }
+    public bool? ApiDeleteSucceeded { get; set; }
+    public string ApiDeleteErrorMessage { get; set; } = "";
+
     public string ApiSucceededText => ApiSucceeded is null ? "" : (ApiSucceeded.Value ? "Yes" : "No");
+    public string IsDeletedText => IsDeleted == true ? "Yes" : "";
+    public string SkyDeleteOkText => ApiDeleteSucceeded is null ? "" : (ApiDeleteSucceeded.Value ? "Yes" : "No");
 
     public string CreatedUtcText => CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss");
     public string? PledgeDateText => PledgeDate?.ToString("yyyy-MM-dd");
     public string? SponsoredDateText => SponsoredDate?.ToString("yyyy-MM-dd");
+
+    public string? DeletedAtUtcText => DeletedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss");
+    public string? SkyDeleteAttemptedAtUtcText => ApiDeleteAttemptedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss");
 
     public string AmountText => Amount.HasValue ? Amount.Value.ToString("C") : "";
 }

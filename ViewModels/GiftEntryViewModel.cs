@@ -510,6 +510,7 @@ WHERE CampaignRecordId = @Id;";
                 if (version != _giftHistoryLoadVersion) return;
                 ExistingCampaignGifts.Clear();
                 ExistingCampaignGiftsStatus = "Unable to load prior gifts: " + ex.Message;
+                TryAppendErrorLog(ex);
             }
             finally
             {

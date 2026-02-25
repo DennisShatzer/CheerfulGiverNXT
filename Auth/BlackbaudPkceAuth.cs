@@ -32,7 +32,7 @@ namespace CheerfulGiverNXT.Auth
         public static async Task<TokenResult> AcquireTokenAsync(
             string clientId,
             string redirectUri,
-            string scope,                 // e.g. "rnxt.r"
+            string scope,
             CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(clientId)) throw new ArgumentException("clientId is required.");

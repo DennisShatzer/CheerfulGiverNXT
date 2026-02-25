@@ -2,6 +2,7 @@ using CheerfulGiverNXT.Auth;
 using CheerfulGiverNXT.Data;
 using CheerfulGiverNXT.Services;
 using CheerfulGiverNXT.Infrastructure.Logging;
+using CheerfulGiverNXT.Infrastructure.Ui;
 using CheerfulGiverNXT.Infrastructure.Theming;
 using System;
 using System.Configuration;
@@ -48,25 +49,24 @@ namespace CheerfulGiverNXT
         protected override async void OnStartup(StartupEventArgs e)
         {
             this.DispatcherUnhandledException += (_, args) =>
-            {
-                try
-                {
-                    var path = ErrorLogger.Log(args.Exception, "DispatcherUnhandledException");
-                    MessageBox.Show(
-                        "An unexpected error occurred and was logged to:\n\n" + path + "\n\n" +
-                        "Please attach this file when reporting the issue.",
-                        "Unhandled exception",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Error);
-                }
-                catch
-                {
-                    // ignore
-                }
+{
+    try
+    {
+        UiError.Show(
+            args.Exception,
+            title: "Unhandled exception",
+            context: "DispatcherUnhandledException",
+            message: "An unexpected error occurred. Please attach the log file when reporting the issue.",
+            includeExceptionMessage: true);
+    }
+    catch
+    {
+        // ignore
+    }
 
-                args.Handled = true;
-                Shutdown();
-            };
+    args.Handled = true;
+    Shutdown();
+};
 
             base.OnStartup(e);
 
@@ -122,7 +122,7 @@ namespace CheerfulGiverNXT
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Startup error", MessageBoxButton.OK, MessageBoxImage.Error);
+                UiError.Show(ex, title: "Startup error", context: "App.OnStartup");
                 Shutdown(-1);
             }
         }

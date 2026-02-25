@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using CheerfulGiverNXT.Infrastructure.Logging;
+using CheerfulGiverNXT.Infrastructure.Ui;
 using CheerfulGiverNXT.Infrastructure.Theming;
 using CheerfulGiverNXT.Infrastructure.AppMode;
 using System.Windows.Media;
@@ -302,14 +303,7 @@ namespace CheerfulGiverNXT
             catch (Exception ex)
             {
                 var context = $"ResultsGrid_MouseDoubleClick. SearchText='{vm.SearchText}'. SelectedId={vm.SelectedRow?.Id}";
-                var path = ErrorLogger.Log(ex, context);
-
-                MessageBox.Show(
-                    "An error occurred opening the Gift window and was logged to:\n\n" + path + "\n\n" +
-                    "Please attach this file when reporting the issue.",
-                    "Open Gift Window Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                UiError.Show(ex, title: "Open Gift Window Error", context: context, message: "An error occurred opening the Gift window.", owner: this);
             }
             finally
             {

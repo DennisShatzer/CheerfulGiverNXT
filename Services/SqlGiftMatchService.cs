@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.Services;
 
@@ -103,7 +104,7 @@ WHEN NOT MATCHED THEN
 
         var campaignRecordId = await _campaignContext.GetCurrentCampaignRecordIdAsync(ct).ConfigureAwait(false);
         if (!campaignRecordId.HasValue)
-            throw new InvalidOperationException("No current CampaignRecordId could be determined. Set ActiveCampaignRecordId in CGAppSettings or mark a campaign active.");
+            throw new InvalidOperationException("No current CampaignRecordId could be determined. Mark a campaign Active in Admin: Campaigns (or ensure at least one campaign exists).");
 
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
@@ -262,6 +263,7 @@ WHERE ChallengeRecordId = @Id;";
                 catch (Exception ex)
                 {
                     warnings.Add($"Challenge '{ch.Name}' match failed: {ex.Message}");
+                    try { _ = ErrorLogger.Log(ex, "SqlGiftMatchService.ApplyMatchesForGiftAsync"); } catch { }
 
                     // Best-effort: record failure row for audit (does NOT consume budget because ApiSucceeded=0).
                     try
@@ -278,8 +280,9 @@ WHERE ChallengeRecordId = @Id;";
                             apiError: ex.Message,
                             ct).ConfigureAwait(false);
                     }
-                    catch
+                    catch (Exception mex)
                     {
+                        try { _ = ErrorLogger.Log(mex, "SqlGiftMatchService.InsertMatchRowAsync"); } catch { }
                         // ignore
                     }
 

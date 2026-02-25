@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CheerfulGiverNXT.Infrastructure.Logging;
 
 namespace CheerfulGiverNXT.ViewModels;
 
@@ -110,6 +111,7 @@ public sealed class GiftMatchAdminViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusText = "Error: " + ex.Message;
+            try { _ = ErrorLogger.Log(ex, "GiftMatchAdminViewModel"); } catch { }
         }
         finally
         {

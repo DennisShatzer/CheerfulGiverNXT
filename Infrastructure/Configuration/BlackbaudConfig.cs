@@ -15,6 +15,26 @@ namespace CheerfulGiverNXT.Infrastructure.Configuration
         /// </summary>
         public static string RedirectUri => RequireAbsoluteUri("BlackbaudRedirectUri");
 
+        /// <summary>
+        /// Space-delimited SKY API OAuth scopes requested during authorization.
+        /// Configure in App.config appSetting 'BlackbaudScopes'.
+        /// </summary>
+        public static string Scopes => RequireNonEmpty("BlackbaudScopes");
+
+        private static string RequireNonEmpty(string key)
+        {
+            var value = ConfigurationManager.AppSettings[key];
+            if (string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"Missing appSetting '{key}' in App.config.");
+
+            // Normalize common whitespace issues without changing the actual scope tokens.
+            value = value.Trim();
+            while (value.Contains("  ", StringComparison.Ordinal))
+                value = value.Replace("  ", " ", StringComparison.Ordinal);
+
+            return value;
+        }
+
         private static string RequireAbsoluteUri(string key)
         {
             var value = ConfigurationManager.AppSettings[key];

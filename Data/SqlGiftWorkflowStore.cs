@@ -66,6 +66,17 @@ public interface IGiftWorkflowStore
     /// Returns the stored ContextJson for a workflow.
     /// </summary>
     Task<string?> GetWorkflowContextJsonAsync(Guid workflowId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a locally stored workflow gift row as deleted and records a full snapshot in dbo.CGDeletedPledges.
+    /// This is an ADMIN operation intended for cleaning up accidental pledges.
+    /// </summary>
+    Task MarkWorkflowGiftDeletedLocalAsync(Guid workflowId, DeletedPledgeMark mark, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the stored SKY delete attempt status for a workflow gift row and its corresponding dbo.CGDeletedPledges log entry.
+    /// </summary>
+    Task UpdateWorkflowGiftSkyDeleteAsync(Guid workflowId, SkyDeleteResult result, CancellationToken ct = default);
 }
 
 public sealed record GiftHistoryItem(
@@ -78,7 +89,26 @@ public sealed record GiftHistoryItem(
     string? Slot,
     string? Comments,
     DateTime CreatedAtUtc
-);
+)
+{
+    /// <summary>
+    /// Gift history timestamps are stored in UTC in the local SQL store.
+    /// SQL DateTime values are typically returned with Kind=Unspecified, so we must
+    /// explicitly mark them as UTC before converting to local time for display.
+    /// </summary>
+    public DateTime CreatedAtLocal => DateTime.SpecifyKind(CreatedAtUtc, DateTimeKind.Utc).ToLocalTime();
+
+    /// <summary>
+    /// The pledge date is often stored as a DATE-only value. For display we prefer the
+    /// pledge date if present, otherwise fall back to the locally committed timestamp.
+    /// </summary>
+    public DateTime DisplayDateLocal => (PledgeDate?.Date) ?? CreatedAtLocal.Date;
+
+    /// <summary>
+    /// Time column in gift history should reflect when the pledge was committed.
+    /// </summary>
+    public DateTime DisplayTimeLocal => CreatedAtLocal;
+}
 
 
 public sealed record LocalTransactionQuery(
@@ -111,7 +141,32 @@ public sealed record LocalTransactionItem(
     string? ApiGiftId,
     string? ApiErrorMessage,
     DateTime? SponsoredDate,
-    string? Slot
+    string? Slot,
+    bool? IsDeleted,
+    DateTime? DeletedAtUtc,
+    string? DeletedByUser,
+    DateTime? ApiDeleteAttemptedAtUtc,
+    bool? ApiDeleteSucceeded,
+    string? ApiDeleteErrorMessage
+);
+
+/// <summary>
+/// Parameters for marking a pledge as deleted locally.
+/// </summary>
+public sealed record DeletedPledgeMark(
+    DateTime DeletedAtUtc,
+    string DeletedByMachine,
+    string DeletedByUser,
+    string? Reason
+);
+
+/// <summary>
+/// Result of attempting to delete a pledge gift in SKY API.
+/// </summary>
+public sealed record SkyDeleteResult(
+    DateTime AttemptedAtUtc,
+    bool Succeeded,
+    string? ErrorMessage
 );
 
 public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
@@ -131,6 +186,8 @@ public sealed class SqlGiftWorkflowStore : IGiftWorkflowStore
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+        await EnsureDeleteSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+        await EnsureDeleteSchemaPresentAsync(conn, ct).ConfigureAwait(false);
 
         // Sponsorship reservations (Option A) use dbo.CGDatesSponsored.
         // Verify the table exists when a sponsorship is being saved.
@@ -230,6 +287,7 @@ LEFT JOIN dbo.CGGiftWorkflowSponsorships s ON s.WorkflowId = g.WorkflowId
 WHERE g.ConstituentId = @ConstituentId
   AND (@CampaignId IS NULL OR g.CampaignId = @CampaignId)
   AND g.ApiSucceeded = 1
+  AND (g.IsDeleted = 0 OR g.IsDeleted IS NULL)
 ORDER BY COALESCE(g.PledgeDate, CONVERT(date, g.CreatedAtUtc)) DESC,
          g.CreatedAtUtc DESC;";
 
@@ -408,6 +466,12 @@ SELECT TOP (@Take)
     g.ApiSucceeded,
     g.ApiGiftId,
     g.ApiErrorMessage,
+    g.IsDeleted,
+    g.DeletedAtUtc,
+    g.DeletedByUser,
+    g.ApiDeleteAttemptedAtUtc,
+    g.ApiDeleteSucceeded,
+    g.ApiDeleteErrorMessage,
     s.SponsoredDate,
     s.Slot
 FROM dbo.CGGiftWorkflows w
@@ -476,6 +540,14 @@ ORDER BY w.CreatedAtUtc DESC;";
             DateTime? sponsoredDate = r["SponsoredDate"] is DBNull ? null : (DateTime)r["SponsoredDate"];
             string? slot = r["Slot"] is DBNull ? null : (string)r["Slot"];
 
+            bool? isDeleted = r["IsDeleted"] is DBNull ? null : (bool)r["IsDeleted"];
+            DateTime? deletedAtUtc = r["DeletedAtUtc"] is DBNull ? null : (DateTime)r["DeletedAtUtc"];
+            string? deletedByUser = r["DeletedByUser"] is DBNull ? null : (string)r["DeletedByUser"];
+
+            DateTime? apiDeleteAttemptedAtUtc = r["ApiDeleteAttemptedAtUtc"] is DBNull ? null : (DateTime)r["ApiDeleteAttemptedAtUtc"];
+            bool? apiDeleteSucceeded = r["ApiDeleteSucceeded"] is DBNull ? null : (bool)r["ApiDeleteSucceeded"];
+            string? apiDeleteError = r["ApiDeleteErrorMessage"] is DBNull ? null : (string)r["ApiDeleteErrorMessage"];
+
             list.Add(new LocalTransactionItem(
                 wfId,
                 createdAtUtc,
@@ -496,7 +568,13 @@ ORDER BY w.CreatedAtUtc DESC;";
                 apiGiftId,
                 apiError,
                 sponsoredDate,
-                slot));
+                slot,
+                isDeleted,
+                deletedAtUtc,
+                deletedByUser,
+                apiDeleteAttemptedAtUtc,
+                apiDeleteSucceeded,
+                apiDeleteError));
         }
 
         return list.ToArray();
@@ -508,6 +586,7 @@ ORDER BY w.CreatedAtUtc DESC;";
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+        await EnsureDeleteSchemaPresentAsync(conn, ct).ConfigureAwait(false);
 
         const string sql = @"SELECT ContextJson FROM dbo.CGGiftWorkflows WHERE WorkflowId = @WorkflowId;";
         await using var cmd = new SqlCommand(sql, conn);
@@ -515,6 +594,392 @@ ORDER BY w.CreatedAtUtc DESC;";
 
         var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return obj is DBNull or null ? null : (string)obj;
+    }
+
+    public async Task MarkWorkflowGiftDeletedLocalAsync(Guid workflowId, DeletedPledgeMark mark, CancellationToken ct = default)
+    {
+        if (workflowId == Guid.Empty) throw new ArgumentNullException(nameof(workflowId));
+        if (mark is null) throw new ArgumentNullException(nameof(mark));
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+        await EnsureDeleteSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        await using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
+        try
+        {
+            // 1) Snapshot the current workflow + gift + sponsorship rows.
+            const string readSql = @"
+SELECT
+    w.WorkflowId,
+    w.CreatedAtUtc,
+    w.CompletedAtUtc,
+    w.Status,
+    w.MachineName,
+    w.WindowsUser,
+    w.SearchText,
+    w.ConstituentId,
+    w.ConstituentName,
+    w.IsFirstTimeGiver,
+    w.IsNewRadioConstituent,
+    w.ContextJson,
+
+    g.Id AS GiftRowId,
+    g.Amount,
+    g.Frequency,
+    g.Installments,
+    g.PledgeDate,
+    g.StartDate,
+    g.FundId,
+    g.CampaignId,
+    g.AppealId,
+    g.PackageId,
+    g.SendReminder,
+    g.Comments,
+    g.ApiAttemptedAtUtc,
+    g.ApiSucceeded,
+    g.ApiGiftId,
+    g.ApiErrorMessage,
+
+    s.SponsoredDate,
+    s.Slot,
+    s.ThresholdAmount
+FROM dbo.CGGiftWorkflows w
+LEFT JOIN dbo.CGGiftWorkflowGifts g ON g.WorkflowId = w.WorkflowId
+LEFT JOIN dbo.CGGiftWorkflowSponsorships s ON s.WorkflowId = w.WorkflowId
+WHERE w.WorkflowId = @WorkflowId;";
+
+            DeletedPledgeSnapshot snap;
+            await using (var read = new SqlCommand(readSql, conn, tx))
+            {
+                read.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+
+                await using var r = await read.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                if (!await r.ReadAsync(ct).ConfigureAwait(false))
+                    throw new InvalidOperationException("Workflow not found.");
+
+                snap = new DeletedPledgeSnapshot
+                {
+                    WorkflowId = (Guid)r["WorkflowId"],
+                    WorkflowCreatedAtUtc = (DateTime)r["CreatedAtUtc"],
+                    WorkflowCompletedAtUtc = r["CompletedAtUtc"] is DBNull ? null : (DateTime)r["CompletedAtUtc"],
+                    WorkflowStatus = (r["Status"] as string ?? "").Trim(),
+                    WorkflowMachineName = (r["MachineName"] as string ?? "").Trim(),
+                    WorkflowWindowsUser = (r["WindowsUser"] as string ?? "").Trim(),
+                    SearchText = r["SearchText"] is DBNull ? null : (string)r["SearchText"],
+                    ConstituentId = r["ConstituentId"] is DBNull ? 0 : (int)r["ConstituentId"],
+                    ConstituentName = r["ConstituentName"] is DBNull ? null : (string)r["ConstituentName"],
+                    IsFirstTimeGiver = r["IsFirstTimeGiver"] is DBNull ? null : (bool)r["IsFirstTimeGiver"],
+                    IsNewRadioConstituent = r["IsNewRadioConstituent"] is DBNull ? null : (bool)r["IsNewRadioConstituent"],
+                    ContextJson = (string)r["ContextJson"],
+
+                    GiftRowId = r["GiftRowId"] is DBNull ? (int?)null : (int)r["GiftRowId"],
+                    Amount = r["Amount"] is DBNull ? null : (decimal)r["Amount"],
+                    Frequency = r["Frequency"] is DBNull ? null : (string)r["Frequency"],
+                    Installments = r["Installments"] is DBNull ? null : (int)r["Installments"],
+                    PledgeDate = r["PledgeDate"] is DBNull ? null : (DateTime)r["PledgeDate"],
+                    StartDate = r["StartDate"] is DBNull ? null : (DateTime)r["StartDate"],
+                    FundId = r["FundId"] is DBNull ? null : (string)r["FundId"],
+                    CampaignId = r["CampaignId"] is DBNull ? null : (string)r["CampaignId"],
+                    AppealId = r["AppealId"] is DBNull ? null : (string)r["AppealId"],
+                    PackageId = r["PackageId"] is DBNull ? null : (string)r["PackageId"],
+                    SendReminder = r["SendReminder"] is DBNull ? null : (bool)r["SendReminder"],
+                    Comments = r["Comments"] is DBNull ? null : (string)r["Comments"],
+                    ApiAttemptedAtUtc = r["ApiAttemptedAtUtc"] is DBNull ? null : (DateTime)r["ApiAttemptedAtUtc"],
+                    ApiSucceeded = r["ApiSucceeded"] is DBNull ? null : (bool)r["ApiSucceeded"],
+                    ApiGiftId = r["ApiGiftId"] is DBNull ? null : (string)r["ApiGiftId"],
+                    ApiErrorMessage = r["ApiErrorMessage"] is DBNull ? null : (string)r["ApiErrorMessage"],
+
+                    SponsoredDate = r["SponsoredDate"] is DBNull ? null : (DateTime)r["SponsoredDate"],
+                    Slot = r["Slot"] is DBNull ? null : (string)r["Slot"],
+                    ThresholdAmount = r["ThresholdAmount"] is DBNull ? null : (decimal)r["ThresholdAmount"],
+                };
+            }
+
+            // 2) Upsert the deletion snapshot.
+            const string upsertSql = @"
+MERGE dbo.CGDeletedPledges AS tgt
+USING (SELECT @WorkflowId AS WorkflowId) AS src
+ON tgt.WorkflowId = src.WorkflowId
+WHEN MATCHED THEN
+    UPDATE SET
+        GiftRowId = @GiftRowId,
+        WorkflowCreatedAtUtc = @WorkflowCreatedAtUtc,
+        WorkflowCompletedAtUtc = @WorkflowCompletedAtUtc,
+        WorkflowStatus = @WorkflowStatus,
+        WorkflowMachineName = @WorkflowMachineName,
+        WorkflowWindowsUser = @WorkflowWindowsUser,
+        SearchText = @SearchText,
+        ConstituentId = @ConstituentId,
+        ConstituentName = @ConstituentName,
+        IsFirstTimeGiver = @IsFirstTimeGiver,
+        IsNewRadioConstituent = @IsNewRadioConstituent,
+        ContextJson = @ContextJson,
+
+        Amount = @Amount,
+        Frequency = @Frequency,
+        Installments = @Installments,
+        PledgeDate = @PledgeDate,
+        StartDate = @StartDate,
+        FundId = @FundId,
+        CampaignId = @CampaignId,
+        AppealId = @AppealId,
+        PackageId = @PackageId,
+        SendReminder = @SendReminder,
+        Comments = @Comments,
+
+        ApiAttemptedAtUtc = @ApiAttemptedAtUtc,
+        ApiSucceeded = @ApiSucceeded,
+        ApiGiftId = @ApiGiftId,
+        ApiErrorMessage = @ApiErrorMessage,
+
+        SponsoredDate = @SponsoredDate,
+        Slot = @Slot,
+        ThresholdAmount = @ThresholdAmount,
+
+        DeletedAtUtc = @DeletedAtUtc,
+        DeletedByMachine = @DeletedByMachine,
+        DeletedByUser = @DeletedByUser,
+        DeletedReason = @DeletedReason,
+
+        LoggedAtUtc = @LoggedAtUtc
+WHEN NOT MATCHED THEN
+    INSERT (
+        WorkflowId, GiftRowId,
+        WorkflowCreatedAtUtc, WorkflowCompletedAtUtc, WorkflowStatus, WorkflowMachineName, WorkflowWindowsUser, SearchText,
+        ConstituentId, ConstituentName, IsFirstTimeGiver, IsNewRadioConstituent, ContextJson,
+        Amount, Frequency, Installments, PledgeDate, StartDate,
+        FundId, CampaignId, AppealId, PackageId,
+        SendReminder, Comments,
+        ApiAttemptedAtUtc, ApiSucceeded, ApiGiftId, ApiErrorMessage,
+        SponsoredDate, Slot, ThresholdAmount,
+        DeletedAtUtc, DeletedByMachine, DeletedByUser, DeletedReason,
+        LoggedAtUtc
+    )
+    VALUES (
+        @WorkflowId, @GiftRowId,
+        @WorkflowCreatedAtUtc, @WorkflowCompletedAtUtc, @WorkflowStatus, @WorkflowMachineName, @WorkflowWindowsUser, @SearchText,
+        @ConstituentId, @ConstituentName, @IsFirstTimeGiver, @IsNewRadioConstituent, @ContextJson,
+        @Amount, @Frequency, @Installments, @PledgeDate, @StartDate,
+        @FundId, @CampaignId, @AppealId, @PackageId,
+        @SendReminder, @Comments,
+        @ApiAttemptedAtUtc, @ApiSucceeded, @ApiGiftId, @ApiErrorMessage,
+        @SponsoredDate, @Slot, @ThresholdAmount,
+        @DeletedAtUtc, @DeletedByMachine, @DeletedByUser, @DeletedReason,
+        @LoggedAtUtc
+    );";
+
+            var loggedAtUtc = DateTime.UtcNow;
+            await using (var upsert = new SqlCommand(upsertSql, conn, tx))
+            {
+                AddDeletedSnapshotParams(upsert, snap, mark, loggedAtUtc);
+                await upsert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            // 3) Mark the gift row as deleted (soft-delete).
+            const string updateGiftSql = @"
+UPDATE dbo.CGGiftWorkflowGifts
+SET
+    IsDeleted = 1,
+    DeletedAtUtc = @DeletedAtUtc,
+    DeletedByUser = @DeletedByUser,
+    DeletedByMachine = @DeletedByMachine,
+    DeleteReason = @DeletedReason
+WHERE WorkflowId = @WorkflowId;";
+
+            await using (var upd = new SqlCommand(updateGiftSql, conn, tx))
+            {
+                upd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+                upd.Parameters.Add(new SqlParameter("@DeletedAtUtc", SqlDbType.DateTime2) { Value = mark.DeletedAtUtc });
+                upd.Parameters.Add(new SqlParameter("@DeletedByUser", SqlDbType.NVarChar, 128) { Value = mark.DeletedByUser });
+                upd.Parameters.Add(new SqlParameter("@DeletedByMachine", SqlDbType.NVarChar, 128) { Value = mark.DeletedByMachine });
+                upd.Parameters.Add(new SqlParameter("@DeletedReason", SqlDbType.NVarChar, 400) { Value = (object?)mark.Reason ?? DBNull.Value });
+                await upd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            // 4) If this gift reserved a sponsorship slot, cancel it (freeing the slot for reuse).
+            if (snap.GiftRowId is int giftRowId)
+            {
+                // NOTE: We are inside an active SqlTransaction.
+                // Any SqlCommand executed on this connection MUST be enlisted in the transaction,
+                // otherwise SqlClient will throw:
+                //   "BeginExecuteReader requires the command to have a transaction when the connection assigned to the command is in a pending local transaction"
+                var hasDatesSponsored = await TableExistsAsync(conn, tx, "CGDatesSponsored", ct).ConfigureAwait(false);
+                if (!hasDatesSponsored)
+                {
+                    await tx.CommitAsync(ct).ConfigureAwait(false);
+                    return;
+                }
+
+                const string cancelSql = @"
+UPDATE dbo.CGDatesSponsored
+SET
+    IsCancelled = 1,
+    CancelledAt = @CancelledAt,
+    CancelledBy = @CancelledBy,
+    CancelledReason = @CancelledReason
+WHERE GiftRecordId = @GiftRecordId
+  AND IsCancelled = 0;";
+
+                await using var cancel = new SqlCommand(cancelSql, conn, tx);
+                cancel.Parameters.Add(new SqlParameter("@GiftRecordId", SqlDbType.Int) { Value = giftRowId });
+                cancel.Parameters.Add(new SqlParameter("@CancelledAt", SqlDbType.DateTime2) { Value = mark.DeletedAtUtc });
+                cancel.Parameters.Add(new SqlParameter("@CancelledBy", SqlDbType.NVarChar, 200) { Value = mark.DeletedByUser });
+                cancel.Parameters.Add(new SqlParameter("@CancelledReason", SqlDbType.NVarChar, 400) { Value = (object?)mark.Reason ?? "Deleted via LocalTransactions" });
+                await cancel.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public async Task UpdateWorkflowGiftSkyDeleteAsync(Guid workflowId, SkyDeleteResult result, CancellationToken ct = default)
+    {
+        if (workflowId == Guid.Empty) throw new ArgumentNullException(nameof(workflowId));
+        if (result is null) throw new ArgumentNullException(nameof(result));
+
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await EnsureSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+        await EnsureDeleteSchemaPresentAsync(conn, ct).ConfigureAwait(false);
+
+        await using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
+        try
+        {
+            const string updateGiftSql = @"
+UPDATE dbo.CGGiftWorkflowGifts
+SET
+    ApiDeleteAttemptedAtUtc = @AttemptedAtUtc,
+    ApiDeleteSucceeded = @Succeeded,
+    ApiDeleteErrorMessage = @ErrorMessage
+WHERE WorkflowId = @WorkflowId;";
+
+            await using (var cmd = new SqlCommand(updateGiftSql, conn, tx))
+            {
+                cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+                cmd.Parameters.Add(new SqlParameter("@AttemptedAtUtc", SqlDbType.DateTime2) { Value = result.AttemptedAtUtc });
+                cmd.Parameters.Add(new SqlParameter("@Succeeded", SqlDbType.Bit) { Value = result.Succeeded });
+                cmd.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, 2000) { Value = (object?)result.ErrorMessage ?? DBNull.Value });
+                await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            const string updateLogSql = @"
+UPDATE dbo.CGDeletedPledges
+SET
+    ApiDeleteAttemptedAtUtc = @AttemptedAtUtc,
+    ApiDeleteSucceeded = @Succeeded,
+    ApiDeleteErrorMessage = @ErrorMessage,
+    LoggedAtUtc = @LoggedAtUtc
+WHERE WorkflowId = @WorkflowId;";
+
+            await using (var cmd = new SqlCommand(updateLogSql, conn, tx))
+            {
+                cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = workflowId });
+                cmd.Parameters.Add(new SqlParameter("@AttemptedAtUtc", SqlDbType.DateTime2) { Value = result.AttemptedAtUtc });
+                cmd.Parameters.Add(new SqlParameter("@Succeeded", SqlDbType.Bit) { Value = result.Succeeded });
+                cmd.Parameters.Add(new SqlParameter("@ErrorMessage", SqlDbType.NVarChar, 2000) { Value = (object?)result.ErrorMessage ?? DBNull.Value });
+                cmd.Parameters.Add(new SqlParameter("@LoggedAtUtc", SqlDbType.DateTime2) { Value = DateTime.UtcNow });
+                await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            await tx.CommitAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private sealed class DeletedPledgeSnapshot
+    {
+        public Guid WorkflowId { get; set; }
+        public DateTime WorkflowCreatedAtUtc { get; set; }
+        public DateTime? WorkflowCompletedAtUtc { get; set; }
+        public string WorkflowStatus { get; set; } = "";
+        public string WorkflowMachineName { get; set; } = "";
+        public string WorkflowWindowsUser { get; set; } = "";
+        public string? SearchText { get; set; }
+        public int ConstituentId { get; set; }
+        public string? ConstituentName { get; set; }
+        public bool? IsFirstTimeGiver { get; set; }
+        public bool? IsNewRadioConstituent { get; set; }
+        public string ContextJson { get; set; } = "";
+
+        public int? GiftRowId { get; set; }
+        public decimal? Amount { get; set; }
+        public string? Frequency { get; set; }
+        public int? Installments { get; set; }
+        public DateTime? PledgeDate { get; set; }
+        public DateTime? StartDate { get; set; }
+        public string? FundId { get; set; }
+        public string? CampaignId { get; set; }
+        public string? AppealId { get; set; }
+        public string? PackageId { get; set; }
+        public bool? SendReminder { get; set; }
+        public string? Comments { get; set; }
+        public DateTime? ApiAttemptedAtUtc { get; set; }
+        public bool? ApiSucceeded { get; set; }
+        public string? ApiGiftId { get; set; }
+        public string? ApiErrorMessage { get; set; }
+
+        public DateTime? SponsoredDate { get; set; }
+        public string? Slot { get; set; }
+        public decimal? ThresholdAmount { get; set; }
+    }
+
+    private static void AddDeletedSnapshotParams(SqlCommand cmd, DeletedPledgeSnapshot snap, DeletedPledgeMark mark, DateTime loggedAtUtc)
+    {
+        cmd.Parameters.Add(new SqlParameter("@WorkflowId", SqlDbType.UniqueIdentifier) { Value = snap.WorkflowId });
+        cmd.Parameters.Add(new SqlParameter("@GiftRowId", SqlDbType.Int) { Value = (object?)snap.GiftRowId ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@WorkflowCreatedAtUtc", SqlDbType.DateTime2) { Value = snap.WorkflowCreatedAtUtc });
+        cmd.Parameters.Add(new SqlParameter("@WorkflowCompletedAtUtc", SqlDbType.DateTime2) { Value = (object?)snap.WorkflowCompletedAtUtc ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@WorkflowStatus", SqlDbType.NVarChar, 30) { Value = snap.WorkflowStatus });
+        cmd.Parameters.Add(new SqlParameter("@WorkflowMachineName", SqlDbType.NVarChar, 128) { Value = snap.WorkflowMachineName });
+        cmd.Parameters.Add(new SqlParameter("@WorkflowWindowsUser", SqlDbType.NVarChar, 128) { Value = snap.WorkflowWindowsUser });
+        cmd.Parameters.Add(new SqlParameter("@SearchText", SqlDbType.NVarChar, 200) { Value = (object?)snap.SearchText ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ConstituentId", SqlDbType.Int) { Value = snap.ConstituentId });
+        cmd.Parameters.Add(new SqlParameter("@ConstituentName", SqlDbType.NVarChar, 200) { Value = (object?)snap.ConstituentName ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@IsFirstTimeGiver", SqlDbType.Bit) { Value = (object?)snap.IsFirstTimeGiver ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@IsNewRadioConstituent", SqlDbType.Bit) { Value = (object?)snap.IsNewRadioConstituent ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ContextJson", SqlDbType.NVarChar, -1) { Value = snap.ContextJson });
+
+        cmd.Parameters.Add(new SqlParameter("@Amount", SqlDbType.Decimal) { Precision = 18, Scale = 2, Value = (object?)snap.Amount ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@Frequency", SqlDbType.NVarChar, 30) { Value = (object?)snap.Frequency ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@Installments", SqlDbType.Int) { Value = (object?)snap.Installments ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@PledgeDate", SqlDbType.Date) { Value = (object?)snap.PledgeDate?.Date ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date) { Value = (object?)snap.StartDate?.Date ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@FundId", SqlDbType.NVarChar, 50) { Value = (object?)snap.FundId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@CampaignId", SqlDbType.NVarChar, 50) { Value = (object?)snap.CampaignId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@AppealId", SqlDbType.NVarChar, 50) { Value = (object?)snap.AppealId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@PackageId", SqlDbType.NVarChar, 50) { Value = (object?)snap.PackageId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@SendReminder", SqlDbType.Bit) { Value = (object?)snap.SendReminder ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@Comments", SqlDbType.NVarChar, 2000) { Value = (object?)snap.Comments ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@ApiAttemptedAtUtc", SqlDbType.DateTime2) { Value = (object?)snap.ApiAttemptedAtUtc ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ApiSucceeded", SqlDbType.Bit) { Value = (object?)snap.ApiSucceeded ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ApiGiftId", SqlDbType.NVarChar, 50) { Value = (object?)snap.ApiGiftId ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ApiErrorMessage", SqlDbType.NVarChar, 2000) { Value = (object?)snap.ApiErrorMessage ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@SponsoredDate", SqlDbType.Date) { Value = (object?)snap.SponsoredDate?.Date ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@Slot", SqlDbType.NVarChar, 20) { Value = (object?)snap.Slot ?? DBNull.Value });
+        cmd.Parameters.Add(new SqlParameter("@ThresholdAmount", SqlDbType.Decimal) { Precision = 18, Scale = 2, Value = (object?)snap.ThresholdAmount ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@DeletedAtUtc", SqlDbType.DateTime2) { Value = mark.DeletedAtUtc });
+        cmd.Parameters.Add(new SqlParameter("@DeletedByMachine", SqlDbType.NVarChar, 128) { Value = mark.DeletedByMachine });
+        cmd.Parameters.Add(new SqlParameter("@DeletedByUser", SqlDbType.NVarChar, 128) { Value = mark.DeletedByUser });
+        cmd.Parameters.Add(new SqlParameter("@DeletedReason", SqlDbType.NVarChar, 400) { Value = (object?)mark.Reason ?? DBNull.Value });
+
+        cmd.Parameters.Add(new SqlParameter("@LoggedAtUtc", SqlDbType.DateTime2) { Value = loggedAtUtc });
     }
 
 private static async Task EnsureSchemaPresentAsync(SqlConnection conn, CancellationToken ct)
@@ -537,6 +1002,113 @@ private static async Task EnsureSchemaPresentAsync(SqlConnection conn, Cancellat
             throw new InvalidOperationException(
                 "Workflow tables are missing. Run Sql/001_CreateGiftWorkflowTables.sql against your CheerfulGiver SQL Express database.");
         }
+    }
+
+    /// <summary>
+    /// Adds the soft-delete columns needed by the LocalTransactions admin "Delete" action.
+    /// Also creates dbo.CGDeletedPledges (audit log) if it is missing.
+    ///
+    /// This method is intentionally idempotent so existing databases can be upgraded in-place.
+    /// </summary>
+    private static async Task EnsureDeleteSchemaPresentAsync(SqlConnection conn, CancellationToken ct)
+    {
+        const string sql = @"
+-- ------------------------------------------------------------
+-- Soft-delete columns on dbo.CGGiftWorkflowGifts
+-- ------------------------------------------------------------
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'IsDeleted') IS NULL
+BEGIN
+    ALTER TABLE dbo.CGGiftWorkflowGifts
+        ADD IsDeleted bit NOT NULL
+            CONSTRAINT DF_CGGiftWorkflowGifts_IsDeleted DEFAULT (0);
+END;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'DeletedAtUtc') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD DeletedAtUtc datetime2(0) NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'DeletedByUser') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD DeletedByUser nvarchar(128) NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'DeletedByMachine') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD DeletedByMachine nvarchar(128) NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'DeleteReason') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD DeleteReason nvarchar(400) NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'ApiDeleteAttemptedAtUtc') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD ApiDeleteAttemptedAtUtc datetime2(0) NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'ApiDeleteSucceeded') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD ApiDeleteSucceeded bit NULL;
+
+IF COL_LENGTH('dbo.CGGiftWorkflowGifts', 'ApiDeleteErrorMessage') IS NULL
+    ALTER TABLE dbo.CGGiftWorkflowGifts ADD ApiDeleteErrorMessage nvarchar(2000) NULL;
+
+-- ------------------------------------------------------------
+-- dbo.CGDeletedPledges = audit snapshot table for deletions
+-- ------------------------------------------------------------
+IF OBJECT_ID('dbo.CGDeletedPledges','U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CGDeletedPledges
+    (
+        DeletedPledgeId int IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_CGDeletedPledges PRIMARY KEY CLUSTERED,
+
+        WorkflowId uniqueidentifier NOT NULL,
+        GiftRowId int NULL,
+
+        WorkflowCreatedAtUtc datetime2(0) NOT NULL,
+        WorkflowCompletedAtUtc datetime2(0) NULL,
+        WorkflowStatus nvarchar(30) NOT NULL,
+        WorkflowMachineName nvarchar(128) NOT NULL,
+        WorkflowWindowsUser nvarchar(128) NOT NULL,
+        SearchText nvarchar(200) NULL,
+        ConstituentId int NOT NULL,
+        ConstituentName nvarchar(200) NULL,
+        IsFirstTimeGiver bit NULL,
+        IsNewRadioConstituent bit NULL,
+        ContextJson nvarchar(max) NOT NULL,
+
+        Amount decimal(18,2) NULL,
+        Frequency nvarchar(30) NULL,
+        Installments int NULL,
+        PledgeDate date NULL,
+        StartDate date NULL,
+        FundId nvarchar(50) NULL,
+        CampaignId nvarchar(50) NULL,
+        AppealId nvarchar(50) NULL,
+        PackageId nvarchar(50) NULL,
+        SendReminder bit NULL,
+        Comments nvarchar(2000) NULL,
+
+        ApiAttemptedAtUtc datetime2(0) NULL,
+        ApiSucceeded bit NULL,
+        ApiGiftId nvarchar(50) NULL,
+        ApiErrorMessage nvarchar(2000) NULL,
+
+        SponsoredDate date NULL,
+        Slot nvarchar(20) NULL,
+        ThresholdAmount decimal(18,2) NULL,
+
+        DeletedAtUtc datetime2(0) NOT NULL,
+        DeletedByMachine nvarchar(128) NOT NULL,
+        DeletedByUser nvarchar(128) NOT NULL,
+        DeletedReason nvarchar(400) NULL,
+
+        ApiDeleteAttemptedAtUtc datetime2(0) NULL,
+        ApiDeleteSucceeded bit NULL,
+        ApiDeleteErrorMessage nvarchar(2000) NULL,
+
+        LoggedAtUtc datetime2(0) NOT NULL
+    );
+
+    CREATE UNIQUE INDEX UX_CGDeletedPledges_WorkflowId
+        ON dbo.CGDeletedPledges(WorkflowId);
+END;
+";
+
+        await using var cmd = new SqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     private static async Task UpsertWorkflowAsync(SqlConnection conn, SqlTransaction tx, GiftWorkflowContext ctx, CancellationToken ct)
@@ -803,6 +1375,27 @@ JOIN sys.schemas s ON s.schema_id = t.schema_id
 WHERE s.name = 'dbo' AND t.name = @Table;";
 
         await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add(new SqlParameter("@Table", SqlDbType.NVarChar, 128) { Value = tableName });
+        var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return obj is not null;
+    }
+
+    /// <summary>
+    /// Transaction-aware variant of <see cref="TableExistsAsync(SqlConnection,string,CancellationToken)"/>.
+    ///
+    /// IMPORTANT:
+    /// When a <see cref="SqlConnection"/> has an active local transaction, *all* commands executed
+    /// on that connection must have their <see cref="SqlCommand.Transaction"/> set.
+    /// </summary>
+    private static async Task<bool> TableExistsAsync(SqlConnection conn, SqlTransaction tx, string tableName, CancellationToken ct)
+    {
+        const string sql = @"
+SELECT 1
+FROM sys.tables t
+JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = 'dbo' AND t.name = @Table;";
+
+        await using var cmd = new SqlCommand(sql, conn, tx);
         cmd.Parameters.Add(new SqlParameter("@Table", SqlDbType.NVarChar, 128) { Value = tableName });
         var obj = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return obj is not null;

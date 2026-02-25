@@ -105,6 +105,12 @@
             <Setter Property="Template" Value="{StaticResource ButtonTemplate.Rounded}"/>
         </Style>
 
+        <Style x:Key="Button.Danger" TargetType="Button" BasedOn="{StaticResource Button.Primary}">
+            <Setter Property="Background" Value="{DynamicResource CG.Brush.Danger}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CG.Brush.Danger}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CG.Brush.DangerForeground}"/>
+        </Style>
+
         <Style x:Key="HeaderCard" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CG.Brush.Surface}"/>
             <Setter Property="CornerRadius" Value="10"/>
@@ -280,6 +286,8 @@
                         <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" Width="70"/>
                         <DataGridTextColumn Header="API OK" Binding="{Binding ApiSucceededText}" Width="70"/>
                         <DataGridTextColumn Header="API Gift Id" Binding="{Binding ApiGiftId}" Width="120"/>
+                    <DataGridTextColumn Header="Deleted" Binding="{Binding IsDeletedText}" Width="70"/>
+                    <DataGridTextColumn Header="SKY Del" Binding="{Binding SkyDeleteOkText}" Width="70"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>
@@ -328,6 +336,7 @@
         <Border Grid.Row="3" Background="{DynamicResource CG.Brush.Surface}" BorderBrush="{DynamicResource CG.Brush.Border}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,10,0,0">
             <DockPanel>
                 <Button x:Name="CopyWorkflowIdButton" DockPanel.Dock="Right" Content="Copy Workflow Id" Style="{StaticResource Button.Secondary}" Margin="10,0,0,0"/>
+                <Button x:Name="DeleteButton" DockPanel.Dock="Right" Content="Delete" Style="{StaticResource Button.Danger}" Margin="10,0,0,0" IsEnabled="{Binding CanDeleteSelected}"/>
                 <Button x:Name="RetrySubmitButton" DockPanel.Dock="Right" Content="Retry Submit to SKY" Style="{StaticResource Button.Primary}" Margin="10,0,0,0" IsEnabled="{Binding CanRetrySelected}"/>
                 <Button x:Name="ExportCsvButton" DockPanel.Dock="Right" Content="Export CSV..." Style="{StaticResource Button.Secondary}" Margin="10,0,0,0"/>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

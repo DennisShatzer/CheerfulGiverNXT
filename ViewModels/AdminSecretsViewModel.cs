@@ -161,12 +161,8 @@ namespace CheerfulGiverNXT.ViewModels
 
         public async Task AuthorizeThisPcAsync(CancellationToken ct = default)
         {
-            // Prefer appSetting BlackbaudScopes if present; otherwise include read+write and offline_access.
-            var scope = ConfigurationManager.AppSettings["BlackbaudScopes"];
-            if (string.IsNullOrWhiteSpace(scope))
-                scope = "rnxt.r rnxt.w offline_access";
-
-            await App.TokenProvider.SeedThisMachineAsync(BlackbaudConfig.RedirectUri, scope, ct).ConfigureAwait(false);
+            // Scopes are configured in App.config (BlackbaudScopes). Do not hard-code them in code.
+            await App.TokenProvider.SeedThisMachineAsync(BlackbaudConfig.RedirectUri, BlackbaudConfig.Scopes, ct).ConfigureAwait(false);
             await RefreshAsync(ct).ConfigureAwait(false);
         }
 
